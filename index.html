@@ -68,6 +68,19 @@
           <h2>Options</h2>
           <div class="settings-group">
             <p class="settings-heading">Graphics</p>
+            <label for="graphics-preset">
+              <span>Graphics quality</span>
+              <select id="graphics-preset">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="lowest">Lowest</option>
+              </select>
+            </label>
+            <label for="resolution-scale">
+              <span>Resolution scale <strong id="resolution-value">720p</strong></span>
+              <input id="resolution-scale" type="range" min="0" max="100" step="1" value="70" />
+            </label>
             <label class="toggle-row" for="shadows-toggle">
               <span>Enable shadows</span>
               <input id="shadows-toggle" type="checkbox" checked />

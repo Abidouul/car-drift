@@ -18,6 +18,9 @@ const shadowsToggle = document.querySelector('#shadows-toggle');
 const keybindButtons = [...document.querySelectorAll('[data-bind-action]')];
 const keybindStatusEl = document.querySelector('#keybind-status');
 const resetBindingsButton = document.querySelector('#reset-bindings');
+const graphicsPresetSelect = document.querySelector('#graphics-preset');
+const resolutionScaleInput = document.querySelector('#resolution-scale');
+const resolutionValueEl = document.querySelector('#resolution-value');
 const panels = {
   main: document.querySelector('[data-panel="main"]'),
   levels: document.querySelector('[data-panel="levels"]'),
@@ -43,14 +46,79 @@ const defaultKeyBindings = {
 const smallMachine = (navigator.deviceMemory && navigator.deviceMemory <= 4)
   || navigator.hardwareConcurrency <= 4
   || window.matchMedia('(max-width: 640px)').matches;
-const quality = {
-  antialias: !smallMachine,
-  pixelRatioCap: smallMachine ? 1.2 : 1.6,
-  shadowMapSize: smallMachine ? 768 : 1024,
-  smokeParticles: smallMachine ? 120 : 180,
-  smokeTextureSize: smallMachine ? 64 : 96,
-  skidPoints: smallMachine ? 240 : 320,
+const graphicsStorageKey = 'driftDonut.graphics.v1';
+const graphicsPresets = {
+  high: {
+    label: 'High',
+    defaultResolutionScale: 100,
+    antialias: true,
+    shadows: true,
+    shadowMapSize: 1024,
+    shadowType: THREE.PCFSoftShadowMap,
+    smokeParticles: 180,
+    smokeTextureSize: 96,
+    skidPoints: 320,
+    smoke: true,
+    skid: true,
+    wheelBlur: true,
+    optionalLights: true,
+    levelLights: true,
+    fogDensityMultiplier: 1,
+  },
+  medium: {
+    label: 'Medium',
+    defaultResolutionScale: smallMachine ? 52 : 70,
+    antialias: !smallMachine,
+    shadows: true,
+    shadowMapSize: 768,
+    shadowType: THREE.PCFShadowMap,
+    smokeParticles: 120,
+    smokeTextureSize: 64,
+    skidPoints: 240,
+    smoke: true,
+    skid: true,
+    wheelBlur: true,
+    optionalLights: true,
+    levelLights: false,
+    fogDensityMultiplier: 0.9,
+  },
+  low: {
+    label: 'Low',
+    defaultResolutionScale: 28,
+    antialias: false,
+    shadows: false,
+    shadowMapSize: 384,
+    shadowType: THREE.BasicShadowMap,
+    smokeParticles: 48,
+    smokeTextureSize: 48,
+    skidPoints: 120,
+    smoke: true,
+    skid: true,
+    wheelBlur: false,
+    optionalLights: false,
+    levelLights: false,
+    fogDensityMultiplier: 0.6,
+  },
+  lowest: {
+    label: 'Lowest',
+    defaultResolutionScale: 0,
+    antialias: false,
+    shadows: false,
+    shadowMapSize: 128,
+    shadowType: THREE.BasicShadowMap,
+    smokeParticles: 0,
+    smokeTextureSize: 32,
+    skidPoints: 2,
+    smoke: false,
+    skid: false,
+    wheelBlur: false,
+    optionalLights: false,
+    levelLights: false,
+    fogDensityMultiplier: 0,
+  },
 };
+let graphicsSettings = loadGraphicsSettings();
+let keyLight;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07090a);
@@ -60,14 +128,14 @@ const camera = new THREE.PerspectiveCamera(getResponsiveFov(), window.innerWidth
 camera.position.set(-9, 7, 12);
 
 const renderer = new THREE.WebGLRenderer({
-  antialias: quality.antialias,
+  antialias: getGraphicsProfile().antialias,
   canvas,
   powerPreference: 'high-performance',
 });
 renderer.setPixelRatio(getRenderPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = smallMachine ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = graphicsSettings.shadows && getGraphicsProfile().shadows;
+renderer.shadowMap.type = getGraphicsProfile().shadowType;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
@@ -82,7 +150,8 @@ const state = {
   manual: false,
   screen: 'menu',
   level: 0,
-  shadows: true,
+  shadows: graphicsSettings.shadows,
+  levelFogDensity: 0.022,
   cameraZoom: 1,
   cameraAngle: 0,
   cameraHeight: 1,
@@ -140,6 +209,8 @@ const smokeSystem = createSmokeSystem();
 const skidSystem = createSkidSystem();
 state.vehicle.contacts = createWheelContactData();
 levelSystem.setLevel(0);
+renderGraphicsSettings();
+applyGraphicsSettings();
 
 canvas.addEventListener('pointerdown', (event) => {
   if (state.screen !== 'playing') return;
@@ -220,6 +291,26 @@ resetBindingsButton.addEventListener('click', () => {
   renderKeyBindings('Controls reset');
 });
 
+graphicsPresetSelect.addEventListener('change', () => {
+  const preset = graphicsPresets[graphicsPresetSelect.value] ? graphicsPresetSelect.value : 'medium';
+  const profile = graphicsPresets[preset];
+  graphicsSettings = {
+    preset,
+    resolutionScale: profile.defaultResolutionScale,
+    shadows: profile.shadows,
+  };
+  saveGraphicsSettings();
+  renderGraphicsSettings();
+  applyGraphicsSettings();
+});
+
+resolutionScaleInput.addEventListener('input', () => {
+  graphicsSettings.resolutionScale = Number(resolutionScaleInput.value);
+  saveGraphicsSettings();
+  renderGraphicsSettings();
+  applyGraphicsSettings();
+});
+
 modeToggle.addEventListener('click', () => {
   state.manual = !state.manual;
   modeToggle.textContent = state.manual ? 'Play auto' : 'Play manual';
@@ -269,7 +360,7 @@ function setupLights() {
   const key = new THREE.DirectionalLight(0xfff0cd, 4.2);
   key.position.set(-10, 15, 8);
   key.castShadow = true;
-  key.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
+  key.shadow.mapSize.set(getGraphicsProfile().shadowMapSize, getGraphicsProfile().shadowMapSize);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 48;
   key.shadow.camera.left = -20;
@@ -277,13 +368,16 @@ function setupLights() {
   key.shadow.camera.top = 20;
   key.shadow.camera.bottom = -20;
   scene.add(key);
+  keyLight = key;
 
   const rim = new THREE.PointLight(0x91e5ff, 70, 32, 2.2);
   rim.position.set(8, 4, -9);
+  rim.userData.optionalLight = true;
   scene.add(rim);
 
   const warm = new THREE.PointLight(0xff7040, 22, 18, 2.4);
   warm.position.set(-6, 2.4, 8);
+  warm.userData.optionalLight = true;
   scene.add(warm);
 }
 
@@ -363,7 +457,8 @@ function createGround() {
       const level = levels[index] ?? levels[0];
       scene.background = new THREE.Color(level.background);
       scene.fog.color.setHex(level.fog);
-      scene.fog.density = level.fogDensity;
+      state.levelFogDensity = level.fogDensity;
+      scene.fog.density = getCurrentLevelFogDensity();
       ground.material.color.setHex(level.ground);
       grid.material.color?.setHex(level.gridMain);
       donutGuide.material.color.setHex(level.guide);
@@ -373,7 +468,7 @@ function createGround() {
       disposeObjectTree(levelDecor);
       levelDecor.clear();
       level.props(levelDecor);
-      applyShadowSetting();
+      applyGraphicsSettings();
     },
   };
 }
@@ -421,6 +516,7 @@ function createDockyardProps(parent) {
     const angle = (i / 6) * Math.PI * 2 + 0.35;
     pole.position.set(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
     lamp.position.copy(pole.position).add(new THREE.Vector3(0, 2.1, 0));
+    lamp.userData.levelLight = true;
     pole.castShadow = true;
     parent.add(pole, lamp);
   }
@@ -469,6 +565,7 @@ function createFrostTerminalProps(parent) {
     const angle = (i / 7) * Math.PI * 2;
     mast.position.set(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
     lamp.position.copy(mast.position).add(new THREE.Vector3(0, 1.6, 0));
+    lamp.userData.levelLight = true;
     mast.castShadow = true;
     parent.add(mast, lamp);
   }
@@ -639,10 +736,12 @@ function createCar() {
 
   const underglow = new THREE.PointLight(0xff3b30, 2.8, 4.2, 3);
   underglow.position.set(0, 0.35, 0.35);
+  underglow.userData.optionalLight = true;
   root.add(underglow);
 
   const headGlow = new THREE.PointLight(0xffe2a6, 1.9, 5.8, 2.1);
   headGlow.position.set(0, 0.68, -2.5);
+  headGlow.userData.optionalLight = true;
   root.add(headGlow);
 
   root.traverse((child) => {
@@ -660,6 +759,19 @@ function addMesh(parent, geometry, material, position = [0, 0, 0], rotation = [0
   mesh.rotation.set(...rotation);
   parent.add(mesh);
   return mesh;
+}
+
+function disposeObjectResources(object) {
+  object.traverse((child) => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) {
+        if (material.map) material.map.dispose();
+        material.dispose();
+      }
+    }
+  });
 }
 
 function makeCarHullGeometry() {
@@ -770,7 +882,7 @@ function createWheelModel(spin, steering, side, tireMaterial, rimMaterial, brake
 
 function createSmokeSystem() {
   const particles = [];
-  const texture = makeSmokeTexture(quality.smokeTextureSize);
+  let texture = makeSmokeTexture(getGraphicsProfile().smokeTextureSize);
   const baseMaterial = new THREE.SpriteMaterial({
     map: texture,
     color: 0xd7d8cf,
@@ -782,21 +894,50 @@ function createSmokeSystem() {
   const group = new THREE.Group();
   world.add(group);
 
-  for (let i = 0; i < quality.smokeParticles; i += 1) {
+  function createParticle() {
     const sprite = new THREE.Sprite(baseMaterial.clone());
     sprite.visible = false;
     group.add(sprite);
-    particles.push({
+    return {
       age: 99,
       life: 1,
       sprite,
       velocity: new THREE.Vector3(),
       startScale: 0.4,
       endScale: 1.4,
-    });
+    };
   }
 
+  function setTextureSize(size) {
+    if (texture.image?.width === size) return;
+
+    const previousTexture = texture;
+    texture = makeSmokeTexture(size);
+    for (const particle of particles) {
+      particle.sprite.material.map = texture;
+      particle.sprite.material.needsUpdate = true;
+    }
+    previousTexture.dispose();
+  }
+
+  function setBudget(count, textureSize) {
+    setTextureSize(textureSize);
+
+    while (particles.length < count) {
+      particles.push(createParticle());
+    }
+
+    while (particles.length > count) {
+      const particle = particles.pop();
+      group.remove(particle.sprite);
+      particle.sprite.material.dispose();
+    }
+  }
+
+  setBudget(getGraphicsProfile().smokeParticles, getGraphicsProfile().smokeTextureSize);
+
   return {
+    setBudget,
     clear() {
       for (const particle of particles) {
         particle.age = particle.life;
@@ -805,6 +946,8 @@ function createSmokeSystem() {
       }
     },
     emit(origin, tireVelocity, sideVector, slip) {
+      if (!getGraphicsProfile().smoke || particles.length === 0) return;
+
       const particle = particles.find((item) => item.age >= item.life);
       if (!particle) return;
 
@@ -847,12 +990,12 @@ function createSmokeSystem() {
   };
 }
 
-function makeSmokeTexture(size) {
+function makeSmokeTexture(size = 128) {
   const smokeCanvas = document.createElement('canvas');
   smokeCanvas.width = size;
   smokeCanvas.height = size;
   const context = smokeCanvas.getContext('2d');
-  const center = size / 2;
+  const center = size * 0.5;
   const gradient = context.createRadialGradient(center, center, size * 0.04, center, center, size * 0.48);
   gradient.addColorStop(0, 'rgba(255,255,255,0.92)');
   gradient.addColorStop(0.32, 'rgba(218,222,211,0.5)');
@@ -872,10 +1015,14 @@ function createSkidSystem() {
       createTrailMesh(group, 0x050505),
       createTrailMesh(group, 0x050505),
     ],
+    setBudget(points) {
+      for (const trail of this.trails) trail.setBudget(points);
+    },
     clear() {
       for (const trail of this.trails) trail.clear();
     },
     add(index, point, slip) {
+      if (!getGraphicsProfile().skid) return;
       this.trails[index].add(point, THREE.MathUtils.clamp(slip, 0, 1));
     },
     update() {
@@ -885,50 +1032,69 @@ function createSkidSystem() {
 }
 
 function createTrailMesh(parent, color) {
-  const maxPoints = quality.skidPoints;
-  const width = 0.23;
-  const points = Array.from({ length: maxPoints }, () => ({
-    position: new THREE.Vector3(),
-    strength: 0,
-  }));
+  let maxPoints = 0;
+  let points = [];
   let pointCount = 0;
+  let positions;
+  let colors;
+  let positionAttribute;
+  let colorAttribute;
+  const width = 0.23;
   const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(maxPoints * 2 * 3);
-  const colors = new Float32Array(maxPoints * 2 * 3);
-  const indices = new Uint16Array((maxPoints - 1) * 6);
   const material = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
+    color,
     transparent: true,
     opacity: 0.82,
     depthWrite: false,
     side: THREE.DoubleSide,
     vertexColors: true,
   });
-
-  for (let i = 0; i < maxPoints - 1; i += 1) {
-    const vertex = i * 2;
-    const index = i * 6;
-    indices[index] = vertex;
-    indices[index + 1] = vertex + 1;
-    indices[index + 2] = vertex + 2;
-    indices[index + 3] = vertex + 1;
-    indices[index + 4] = vertex + 3;
-    indices[index + 5] = vertex + 2;
-  }
-
-  const positionAttribute = new THREE.BufferAttribute(positions, 3);
-  const colorAttribute = new THREE.BufferAttribute(colors, 3);
-  positionAttribute.setUsage(THREE.DynamicDrawUsage);
-  colorAttribute.setUsage(THREE.DynamicDrawUsage);
-  geometry.setAttribute('position', positionAttribute);
-  geometry.setAttribute('color', colorAttribute);
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.setDrawRange(0, 0);
-  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 64);
-
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = 1;
   parent.add(mesh);
+
+  function configure(pointsLimit) {
+    const nextMaxPoints = Math.max(2, pointsLimit);
+    if (nextMaxPoints === maxPoints) return;
+
+    const previous = points.slice(Math.max(0, pointCount - nextMaxPoints), pointCount);
+    maxPoints = nextMaxPoints;
+    points = Array.from({ length: maxPoints }, () => ({
+      position: new THREE.Vector3(),
+      strength: 0,
+    }));
+    pointCount = Math.min(previous.length, maxPoints);
+
+    for (let i = 0; i < pointCount; i += 1) {
+      points[i].position.copy(previous[i].position);
+      points[i].strength = previous[i].strength;
+    }
+
+    positions = new Float32Array(maxPoints * 2 * 3);
+    colors = new Float32Array(maxPoints * 2 * 3);
+    const indices = new Uint16Array((maxPoints - 1) * 6);
+
+    for (let i = 0; i < maxPoints - 1; i += 1) {
+      const vertex = i * 2;
+      const index = i * 6;
+      indices[index] = vertex;
+      indices[index + 1] = vertex + 1;
+      indices[index + 2] = vertex + 2;
+      indices[index + 3] = vertex + 1;
+      indices[index + 4] = vertex + 3;
+      indices[index + 5] = vertex + 2;
+    }
+
+    positionAttribute = new THREE.BufferAttribute(positions, 3);
+    colorAttribute = new THREE.BufferAttribute(colors, 3);
+    positionAttribute.setUsage(THREE.DynamicDrawUsage);
+    colorAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('position', positionAttribute);
+    geometry.setAttribute('color', colorAttribute);
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    geometry.setDrawRange(0, Math.max(0, pointCount - 1) * 6);
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 64);
+  }
 
   function pushPoint(x, y, z, strength) {
     if (pointCount === maxPoints) {
@@ -944,7 +1110,12 @@ function createTrailMesh(parent, color) {
     pointCount += 1;
   }
 
+  configure(getGraphicsProfile().skidPoints);
+
   return {
+    setBudget(pointsLimit) {
+      configure(pointsLimit);
+    },
     clear() {
       pointCount = 0;
       geometry.setDrawRange(0, 0);
@@ -1128,6 +1299,7 @@ function updateCarVisuals(delta) {
   const vehicle = state.vehicle;
   const speed = vehicle.velocity.length();
   const slipAngle = signedAngleOnGround(getVehicleBasis(vehicle.yaw).forward, vehicle.velocity.clone().normalize());
+  const showWheelBlur = getGraphicsProfile().wheelBlur;
 
   car.root.position.copy(vehicle.position);
   car.root.rotation.y = vehicle.yaw;
@@ -1142,12 +1314,12 @@ function updateCarVisuals(delta) {
     if (wheel.front) {
       wheel.steering.rotation.y = -vehicle.steer;
       wheel.spin.rotation.x = vehicle.wheelSpinFront;
-      wheel.blur.visible = speed > 3.5;
+      wheel.blur.visible = showWheelBlur && speed > 3.5;
       wheel.blur.material.opacity = 0.09 + vehicle.frontSlip * 0.09;
     } else {
       wheel.steering.rotation.y = 0;
       wheel.spin.rotation.x = vehicle.wheelSpinRear;
-      wheel.blur.visible = vehicle.rearSlip > 0.25;
+      wheel.blur.visible = showWheelBlur && vehicle.rearSlip > 0.25;
       wheel.blur.material.opacity = 0.18 + vehicle.rearSlip * 0.18;
     }
   }
@@ -1261,14 +1433,98 @@ function quitGame() {
 }
 
 function setShadows(enabled) {
+  graphicsSettings.shadows = enabled;
   state.shadows = enabled;
-  shadowsToggle.checked = enabled;
-  applyShadowSetting();
+  saveGraphicsSettings();
+  renderGraphicsSettings();
+  applyGraphicsSettings();
 }
 
 function applyShadowSetting() {
+  applyGraphicsSettings();
+}
+
+function loadGraphicsSettings() {
+  const defaultPreset = smallMachine ? 'low' : 'medium';
+  const fallback = graphicsPresets[defaultPreset];
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(graphicsStorageKey) || '{}');
+    const preset = graphicsPresets[saved.preset] ? saved.preset : defaultPreset;
+    const profile = graphicsPresets[preset];
+    return {
+      preset,
+      resolutionScale: THREE.MathUtils.clamp(
+        Number.isFinite(saved.resolutionScale) ? saved.resolutionScale : profile.defaultResolutionScale,
+        0,
+        100,
+      ),
+      shadows: typeof saved.shadows === 'boolean' ? saved.shadows : profile.shadows,
+    };
+  } catch {
+    return {
+      preset: defaultPreset,
+      resolutionScale: fallback.defaultResolutionScale,
+      shadows: fallback.shadows,
+    };
+  }
+}
+
+function saveGraphicsSettings() {
+  localStorage.setItem(graphicsStorageKey, JSON.stringify(graphicsSettings));
+}
+
+function getGraphicsProfile() {
+  return graphicsPresets[graphicsSettings.preset] ?? graphicsPresets.medium;
+}
+
+function getTargetRenderHeight(scale) {
+  return Math.round(THREE.MathUtils.lerp(240, 1080, THREE.MathUtils.clamp(scale, 0, 100) / 100));
+}
+
+function getCurrentLevelFogDensity() {
+  return state.levelFogDensity * getGraphicsProfile().fogDensityMultiplier;
+}
+
+function renderGraphicsSettings() {
+  const targetHeight = getTargetRenderHeight(graphicsSettings.resolutionScale);
+  graphicsPresetSelect.value = graphicsSettings.preset;
+  resolutionScaleInput.value = String(Math.round(graphicsSettings.resolutionScale));
+  resolutionValueEl.textContent = `${targetHeight}p`;
+  shadowsToggle.checked = graphicsSettings.shadows;
+  shadowsToggle.disabled = !getGraphicsProfile().shadows;
+}
+
+function applyGraphicsSettings() {
+  const profile = getGraphicsProfile();
+  state.shadows = graphicsSettings.shadows && profile.shadows;
+
+  renderer.setPixelRatio(getRenderPixelRatio());
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.shadowMap.enabled = state.shadows;
+  renderer.shadowMap.type = profile.shadowType;
   renderer.shadowMap.needsUpdate = true;
+
+  if (keyLight) {
+    keyLight.castShadow = state.shadows;
+    keyLight.shadow.mapSize.set(profile.shadowMapSize, profile.shadowMapSize);
+    keyLight.shadow.needsUpdate = true;
+  }
+
+  scene.fog.density = getCurrentLevelFogDensity();
+  smokeSystem.setBudget(profile.smokeParticles, profile.smokeTextureSize);
+  skidSystem.setBudget(profile.skidPoints);
+
+  scene.traverse((child) => {
+    if (child.userData.optionalLight) child.visible = profile.optionalLights;
+    if (child.userData.levelLight) child.visible = profile.levelLights;
+    if (child.isMesh) {
+      if (child.userData.baseCastShadow === undefined) child.userData.baseCastShadow = child.castShadow;
+      if (child.userData.baseReceiveShadow === undefined) child.userData.baseReceiveShadow = child.receiveShadow;
+      child.castShadow = state.shadows && child.userData.baseCastShadow;
+      child.receiveShadow = state.shadows && child.userData.baseReceiveShadow;
+    }
+  });
 }
 
 function updateStatusText() {
@@ -1617,14 +1873,16 @@ function onResize() {
   camera.aspect = width / height;
   camera.fov = getResponsiveFov();
   camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
   renderer.setPixelRatio(getRenderPixelRatio());
+  renderer.setSize(width, height);
+}
+
+function getRenderPixelRatio() {
+  const targetHeight = getTargetRenderHeight(graphicsSettings.resolutionScale);
+  const targetRatio = targetHeight / Math.max(1, window.innerHeight);
+  return THREE.MathUtils.clamp(targetRatio, 0.22, 4);
 }
 
 function getResponsiveFov() {
   return window.innerWidth < 560 ? 58 : 48;
-}
-
-function getRenderPixelRatio() {
-  return Math.min(window.devicePixelRatio || 1, quality.pixelRatioCap);
 }
