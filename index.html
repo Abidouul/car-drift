@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Drift Donut</title>
+  </head>
+  <body>
+    <main id="app" aria-label="3D drift driving game">
+      <canvas id="scene"></canvas>
+      <section class="hud" aria-label="Simulation status">
+        <div>
+          <span class="label">Drift Donut</span>
+          <strong id="status">Looping</strong>
+        </div>
+        <dl>
+          <div>
+            <dt>Speed</dt>
+            <dd id="speed">78 km/h</dd>
+          </div>
+          <div>
+            <dt>Angle</dt>
+            <dd id="angle">42 deg</dd>
+          </div>
+        </dl>
+        <div class="controls">
+          <button id="mode-toggle" type="button">Play manual</button>
+          <label for="camera-zoom">
+            <span>Camera zoom</span>
+            <input id="camera-zoom" type="range" min="0.65" max="1.65" step="0.01" value="1" />
+          </label>
+          <label for="camera-angle">
+            <span>Camera angle</span>
+            <input id="camera-angle" type="range" min="-180" max="180" step="1" value="0" />
+          </label>
+        </div>
+      </section>
+      <section class="menu-overlay" data-screen="menu" aria-label="Game menu">
+        <div class="menu-panel menu-panel-main" data-panel="main">
+          <p class="eyebrow">Rear-wheel drift</p>
+          <h1>Donut Driver</h1>
+          <div class="menu-actions">
+            <button id="play-button" type="button">Play</button>
+            <button id="options-button" type="button">Options</button>
+            <button id="quit-button" type="button">Quit</button>
+          </div>
+        </div>
+
+        <div class="menu-panel" data-panel="levels" hidden>
+          <p class="eyebrow">Select level</p>
+          <h2>Choose Arena</h2>
+          <div class="level-list">
+            <button class="level-card" type="button" data-level="0">
+              <span>Dockyard Ring</span>
+              <small>Warm asphalt, cones, containers, industrial lights</small>
+            </button>
+            <button class="level-card" type="button" data-level="1">
+              <span>Frost Terminal</span>
+              <small>Cold concrete, snow banks, blue lamps, ice haze</small>
+            </button>
+          </div>
+          <button class="secondary-button" type="button" data-back-menu>Back</button>
+        </div>
+
+        <div class="menu-panel" data-panel="options" hidden>
+          <p class="eyebrow">Options</p>
+          <h2>Graphics</h2>
+          <label class="toggle-row" for="shadows-toggle">
+            <span>Enable shadows</span>
+            <input id="shadows-toggle" type="checkbox" checked />
+          </label>
+          <button class="secondary-button" type="button" data-back-menu>Back</button>
+        </div>
+
+        <div class="menu-panel" data-panel="quit" hidden>
+          <p class="eyebrow">Game closed</p>
+          <h2>Quit</h2>
+          <p class="menu-copy">The game is stopped in this tab.</p>
+          <button class="secondary-button" type="button" data-back-menu>Return to menu</button>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
