@@ -194,15 +194,15 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (!isArrowKey(event.key)) return;
+  if (!isMovementKey(event.key)) return;
   event.preventDefault();
-  setArrowInput(event.key, true);
+  setMovementInput(event.key, true);
 });
 
 window.addEventListener('keyup', (event) => {
-  if (!isArrowKey(event.key)) return;
+  if (!isMovementKey(event.key)) return;
   event.preventDefault();
-  setArrowInput(event.key, false);
+  setMovementInput(event.key, false);
 });
 
 window.addEventListener('resize', onResize);
@@ -1100,10 +1100,7 @@ function startLevel(levelIndex) {
   updateStatusText();
   hud.hidden = false;
   menuOverlay.hidden = true;
-  setArrowInput('ArrowUp', false);
-  setArrowInput('ArrowDown', false);
-  setArrowInput('ArrowLeft', false);
-  setArrowInput('ArrowRight', false);
+  clearMovementInput();
 }
 
 function showMainMenu() {
@@ -1115,10 +1112,7 @@ function showMainMenu() {
   hud.hidden = true;
   menuOverlay.hidden = false;
   showMenuPanel('main');
-  setArrowInput('ArrowUp', false);
-  setArrowInput('ArrowDown', false);
-  setArrowInput('ArrowLeft', false);
-  setArrowInput('ArrowRight', false);
+  clearMovementInput();
 }
 
 function showMenuPanel(name) {
@@ -1157,15 +1151,30 @@ function updateStatusText() {
   statusEl.textContent = state.manual ? 'Manual' : 'Looping';
 }
 
-function isArrowKey(key) {
-  return key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight';
+function isMovementKey(key) {
+  return getMovementDirection(key) !== null;
 }
 
-function setArrowInput(key, active) {
-  if (key === 'ArrowUp') state.input.up = active;
-  if (key === 'ArrowDown') state.input.down = active;
-  if (key === 'ArrowLeft') state.input.left = active;
-  if (key === 'ArrowRight') state.input.right = active;
+function setMovementInput(key, active) {
+  const direction = getMovementDirection(key);
+  if (!direction) return;
+  state.input[direction] = active;
+}
+
+function clearMovementInput() {
+  state.input.up = false;
+  state.input.down = false;
+  state.input.left = false;
+  state.input.right = false;
+}
+
+function getMovementDirection(key) {
+  const normalized = key.toLowerCase();
+  if (key === 'ArrowUp' || normalized === 'z') return 'up';
+  if (key === 'ArrowDown' || normalized === 's') return 'down';
+  if (key === 'ArrowLeft' || normalized === 'q') return 'left';
+  if (key === 'ArrowRight' || normalized === 'd') return 'right';
+  return null;
 }
 
 function updateEffects(delta) {
