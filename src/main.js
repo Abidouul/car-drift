@@ -194,15 +194,15 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
-  if (!isMovementKey(event.key)) return;
+  if (!isMovementKey(event)) return;
   event.preventDefault();
-  setMovementInput(event.key, true);
+  setMovementInput(event, true);
 });
 
 window.addEventListener('keyup', (event) => {
-  if (!isMovementKey(event.key)) return;
+  if (!isMovementKey(event)) return;
   event.preventDefault();
-  setMovementInput(event.key, false);
+  setMovementInput(event, false);
 });
 
 window.addEventListener('resize', onResize);
@@ -1058,14 +1058,16 @@ function getDriverControls(vehicle, basis, radial, tangent, yawError) {
   }
 
   const steerInput = Number(state.input.right) - Number(state.input.left);
-  const throttleInput = Number(state.input.up);
-  const brakeInput = Number(state.input.down);
+  const forwardInput = Number(state.input.up);
+  const reverseInput = Number(state.input.down);
+  const forwardSpeed = dotGround(vehicle.velocity, basis.forward);
+  const brakingBeforeReverse = reverseInput > 0 && forwardSpeed > 0.45;
   const speed = vehicle.velocity.length();
   const steerLimit = THREE.MathUtils.lerp(0.82, 0.5, THREE.MathUtils.clamp(speed / 9, 0, 1));
 
   return {
-    throttle: throttleInput,
-    brake: brakeInput,
+    throttle: forwardInput - (brakingBeforeReverse ? 0 : reverseInput * 0.62),
+    brake: brakingBeforeReverse ? 1 : 0,
     steer: steerInput * steerLimit,
   };
 }
@@ -1151,12 +1153,12 @@ function updateStatusText() {
   statusEl.textContent = state.manual ? 'Manual' : 'Looping';
 }
 
-function isMovementKey(key) {
-  return getMovementDirection(key) !== null;
+function isMovementKey(event) {
+  return getMovementDirection(event) !== null;
 }
 
-function setMovementInput(key, active) {
-  const direction = getMovementDirection(key);
+function setMovementInput(event, active) {
+  const direction = getMovementDirection(event);
   if (!direction) return;
   state.input[direction] = active;
 }
@@ -1168,12 +1170,13 @@ function clearMovementInput() {
   state.input.right = false;
 }
 
-function getMovementDirection(key) {
-  const normalized = key.toLowerCase();
-  if (key === 'ArrowUp' || normalized === 'z') return 'up';
-  if (key === 'ArrowDown' || normalized === 's') return 'down';
-  if (key === 'ArrowLeft' || normalized === 'q') return 'left';
-  if (key === 'ArrowRight' || normalized === 'd') return 'right';
+function getMovementDirection(event) {
+  const key = event.key.toLowerCase();
+  const code = event.code;
+  if (event.key === 'ArrowUp' || key === 'z' || key === 'w' || code === 'KeyZ' || code === 'KeyW') return 'up';
+  if (event.key === 'ArrowDown' || key === 's' || code === 'KeyS') return 'down';
+  if (event.key === 'ArrowLeft' || key === 'q' || key === 'a' || code === 'KeyQ' || code === 'KeyA') return 'left';
+  if (event.key === 'ArrowRight' || key === 'd' || code === 'KeyD') return 'right';
   return null;
 }
 
