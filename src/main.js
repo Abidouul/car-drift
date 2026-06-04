@@ -40,6 +40,18 @@ const defaultKeyBindings = {
   down: { key: 's', code: 'KeyS', label: 'S' },
 };
 
+const smallMachine = (navigator.deviceMemory && navigator.deviceMemory <= 4)
+  || navigator.hardwareConcurrency <= 4
+  || window.matchMedia('(max-width: 640px)').matches;
+const quality = {
+  antialias: !smallMachine,
+  pixelRatioCap: smallMachine ? 1.2 : 1.6,
+  shadowMapSize: smallMachine ? 768 : 1024,
+  smokeParticles: smallMachine ? 120 : 180,
+  smokeTextureSize: smallMachine ? 64 : 96,
+  skidPoints: smallMachine ? 240 : 320,
+};
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07090a);
 scene.fog = new THREE.FogExp2(0x07090a, 0.022);
@@ -48,14 +60,14 @@ const camera = new THREE.PerspectiveCamera(getResponsiveFov(), window.innerWidth
 camera.position.set(-9, 7, 12);
 
 const renderer = new THREE.WebGLRenderer({
-  antialias: true,
+  antialias: quality.antialias,
   canvas,
   powerPreference: 'high-performance',
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(getRenderPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = smallMachine ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
@@ -126,6 +138,7 @@ const car = createCar();
 world.add(car.root);
 const smokeSystem = createSmokeSystem();
 const skidSystem = createSkidSystem();
+state.vehicle.contacts = createWheelContactData();
 levelSystem.setLevel(0);
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -256,7 +269,7 @@ function setupLights() {
   const key = new THREE.DirectionalLight(0xfff0cd, 4.2);
   key.position.set(-10, 15, 8);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 48;
   key.shadow.camera.left = -20;
@@ -357,6 +370,7 @@ function createGround() {
       inner.material.color.setHex(level.center);
       inner.material.emissive.setHex(level.center);
 
+      disposeObjectTree(levelDecor);
       levelDecor.clear();
       level.props(levelDecor);
       applyShadowSetting();
@@ -366,16 +380,23 @@ function createGround() {
 
 function createDockyardProps(parent) {
   const containerColors = [0x1f6f8b, 0xa43f2b, 0xd19d32, 0x38454d];
+  const containerGeometry = new THREE.BoxGeometry(2.8, 1.1, 1.15);
+  const containerMaterials = containerColors.map((color) => new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.74,
+    metalness: 0.18,
+  }));
+  const coneGeometry = new THREE.ConeGeometry(0.18, 0.52, 14);
+  const coneMaterial = new THREE.MeshStandardMaterial({
+    color: 0xff7a1a,
+    roughness: 0.62,
+  });
+  const poleGeometry = new THREE.CylinderGeometry(0.07, 0.07, 4.2, 10);
+  const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x2c3334, roughness: 0.5, metalness: 0.2 });
+
   for (let i = 0; i < 10; i += 1) {
     const stack = new THREE.Group();
-    const box = new THREE.Mesh(
-      new THREE.BoxGeometry(2.8, 1.1, 1.15),
-      new THREE.MeshStandardMaterial({
-        color: containerColors[i % containerColors.length],
-        roughness: 0.74,
-        metalness: 0.18,
-      }),
-    );
+    const box = new THREE.Mesh(containerGeometry, containerMaterials[i % containerMaterials.length]);
     box.castShadow = true;
     box.receiveShadow = true;
     stack.add(box);
@@ -387,13 +408,7 @@ function createDockyardProps(parent) {
   }
 
   for (let i = 0; i < 18; i += 1) {
-    const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.18, 0.52, 18),
-      new THREE.MeshStandardMaterial({
-        color: 0xff7a1a,
-        roughness: 0.62,
-      }),
-    );
+    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
     const angle = (i / 18) * Math.PI * 2;
     cone.position.set(Math.cos(angle) * 7.2, 0.26, Math.sin(angle) * 7.2);
     cone.castShadow = true;
@@ -401,10 +416,7 @@ function createDockyardProps(parent) {
   }
 
   for (let i = 0; i < 6; i += 1) {
-    const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.07, 4.2, 12),
-      new THREE.MeshStandardMaterial({ color: 0x2c3334, roughness: 0.5, metalness: 0.2 }),
-    );
+    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
     const lamp = new THREE.PointLight(0xffc067, 18, 12, 2.2);
     const angle = (i / 6) * Math.PI * 2 + 0.35;
     pole.position.set(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
@@ -415,17 +427,25 @@ function createDockyardProps(parent) {
 }
 
 function createFrostTerminalProps(parent) {
+  const bankGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const bankMaterial = new THREE.MeshStandardMaterial({
+    color: 0xd9eef1,
+    roughness: 0.96,
+    metalness: 0,
+  });
+  const barrierGeometry = new THREE.BoxGeometry(2.2, 0.72, 0.32);
+  const barrierMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0xf0f7f8, roughness: 0.78 }),
+    new THREE.MeshStandardMaterial({ color: 0x74a6b8, roughness: 0.78 }),
+  ];
+  const mastGeometry = new THREE.CylinderGeometry(0.06, 0.06, 3.6, 10);
+  const mastMaterial = new THREE.MeshStandardMaterial({ color: 0x334b56, roughness: 0.48, metalness: 0.3 });
+
   for (let i = 0; i < 16; i += 1) {
-    const bank = new THREE.Mesh(
-      new THREE.BoxGeometry(2.8 + Math.random() * 1.8, 0.32, 0.75 + Math.random() * 0.5),
-      new THREE.MeshStandardMaterial({
-        color: 0xd9eef1,
-        roughness: 0.96,
-        metalness: 0,
-      }),
-    );
+    const bank = new THREE.Mesh(bankGeometry, bankMaterial);
     const angle = (i / 16) * Math.PI * 2;
     const radius = 9.2 + (i % 4) * 1.1;
+    bank.scale.set(2.8 + Math.random() * 1.8, 0.32, 0.75 + Math.random() * 0.5);
     bank.position.set(Math.cos(angle) * radius, 0.16, Math.sin(angle) * radius);
     bank.rotation.y = -angle + Math.PI / 2;
     bank.castShadow = true;
@@ -434,13 +454,7 @@ function createFrostTerminalProps(parent) {
   }
 
   for (let i = 0; i < 9; i += 1) {
-    const barrier = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, 0.72, 0.32),
-      new THREE.MeshStandardMaterial({
-        color: i % 2 ? 0x74a6b8 : 0xf0f7f8,
-        roughness: 0.78,
-      }),
-    );
+    const barrier = new THREE.Mesh(barrierGeometry, barrierMaterials[i % 2]);
     const angle = (i / 9) * Math.PI * 2 + 0.2;
     barrier.position.set(Math.cos(angle) * 15.5, 0.36, Math.sin(angle) * 15.5);
     barrier.rotation.y = -angle + Math.PI / 2;
@@ -450,10 +464,7 @@ function createFrostTerminalProps(parent) {
   }
 
   for (let i = 0; i < 7; i += 1) {
-    const mast = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.06, 3.6, 12),
-      new THREE.MeshStandardMaterial({ color: 0x334b56, roughness: 0.48, metalness: 0.3 }),
-    );
+    const mast = new THREE.Mesh(mastGeometry, mastMaterial);
     const lamp = new THREE.PointLight(0x8de8ff, 18, 12, 2.2);
     const angle = (i / 7) * Math.PI * 2;
     mast.position.set(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
@@ -513,6 +524,11 @@ function createCar() {
     roughness: 0.24,
     metalness: 0.35,
   });
+  const brakeDisc = new THREE.MeshStandardMaterial({
+    color: 0xa5a8a3,
+    roughness: 0.28,
+    metalness: 0.8,
+  });
   const lightLens = new THREE.MeshStandardMaterial({
     color: 0xfff4c9,
     emissive: 0xffdf7a,
@@ -534,6 +550,16 @@ function createCar() {
     side: THREE.DoubleSide,
     depthWrite: false,
   });
+  const wheelGeometry = {
+    tire: new THREE.TorusGeometry(0.34, 0.13, 14, 42),
+    sidewall: new THREE.CylinderGeometry(0.4, 0.4, 0.27, 36, 1, true),
+    rimOuter: new THREE.CylinderGeometry(0.24, 0.24, 0.3, 28),
+    rimHub: new THREE.CylinderGeometry(0.09, 0.09, 0.34, 18),
+    spoke: new THREE.BoxGeometry(0.035, 0.055, 0.34),
+    brakeDisc: new THREE.CylinderGeometry(0.18, 0.18, 0.035, 28),
+    caliper: new RoundedBoxGeometry(0.06, 0.12, 0.24, 3, 0.02),
+    blur: new THREE.CircleGeometry(0.33, 28),
+  };
 
   addMesh(sprung, makeCarHullGeometry(), paint);
   addMesh(sprung, new RoundedBoxGeometry(2.76, 0.18, 4.44, 5, 0.08), carbon, [0, 0.43, 0.08]);
@@ -596,7 +622,7 @@ function createCar() {
     const spin = new THREE.Group();
     steering.add(spin);
 
-    createWheelModel(spin, steering, Math.sign(x), black, rim, brake, blurMaterial, front);
+    createWheelModel(spin, steering, Math.sign(x), black, rim, brake, brakeDisc, blurMaterial, wheelGeometry, front);
 
     const blur = spin.userData.blur;
 
@@ -701,43 +727,40 @@ function addWheelArch(parent, side, z, material) {
   return arch;
 }
 
-function createWheelModel(spin, steering, side, tireMaterial, rimMaterial, brakeMaterial, blurMaterial, front) {
-  const tire = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.13, 18, 54), tireMaterial);
+function createWheelModel(spin, steering, side, tireMaterial, rimMaterial, brakeMaterial, brakeDiscMaterial, blurMaterial, geometry, front) {
+  const tire = new THREE.Mesh(geometry.tire, tireMaterial);
   tire.rotation.y = Math.PI / 2;
   spin.add(tire);
 
-  const sidewall = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.27, 54, 1, true), tireMaterial);
+  const sidewall = new THREE.Mesh(geometry.sidewall, tireMaterial);
   sidewall.rotation.z = Math.PI / 2;
   spin.add(sidewall);
 
-  const rimOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.3, 36), rimMaterial);
+  const rimOuter = new THREE.Mesh(geometry.rimOuter, rimMaterial);
   rimOuter.rotation.z = Math.PI / 2;
   spin.add(rimOuter);
 
-  const rimHub = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.34, 24), rimMaterial);
+  const rimHub = new THREE.Mesh(geometry.rimHub, rimMaterial);
   rimHub.rotation.z = Math.PI / 2;
   spin.add(rimHub);
 
   for (let i = 0; i < 10; i += 1) {
-    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.055, 0.34), rimMaterial);
+    const spoke = new THREE.Mesh(geometry.spoke, rimMaterial);
     spoke.position.x = side * 0.035;
     spoke.rotation.x = (i / 10) * Math.PI;
     spin.add(spoke);
   }
 
-  const brakeDisc = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.18, 0.18, 0.035, 36),
-    new THREE.MeshStandardMaterial({ color: 0xa5a8a3, roughness: 0.28, metalness: 0.8 }),
-  );
+  const brakeDisc = new THREE.Mesh(geometry.brakeDisc, brakeDiscMaterial);
   brakeDisc.rotation.z = Math.PI / 2;
   spin.add(brakeDisc);
 
-  const caliper = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.12, 0.24, 3, 0.02), brakeMaterial);
+  const caliper = new THREE.Mesh(geometry.caliper, brakeMaterial);
   caliper.position.set(side * 0.17, front ? 0.1 : -0.08, 0.18);
   caliper.rotation.x = front ? 0.2 : -0.24;
   steering.add(caliper);
 
-  const blur = new THREE.Mesh(new THREE.CircleGeometry(0.33, 42), blurMaterial.clone());
+  const blur = new THREE.Mesh(geometry.blur, blurMaterial.clone());
   blur.rotation.y = Math.PI / 2;
   blur.position.x = side * 0.18;
   blur.visible = false;
@@ -747,7 +770,7 @@ function createWheelModel(spin, steering, side, tireMaterial, rimMaterial, brake
 
 function createSmokeSystem() {
   const particles = [];
-  const texture = makeSmokeTexture();
+  const texture = makeSmokeTexture(quality.smokeTextureSize);
   const baseMaterial = new THREE.SpriteMaterial({
     map: texture,
     color: 0xd7d8cf,
@@ -759,7 +782,7 @@ function createSmokeSystem() {
   const group = new THREE.Group();
   world.add(group);
 
-  for (let i = 0; i < 260; i += 1) {
+  for (let i = 0; i < quality.smokeParticles; i += 1) {
     const sprite = new THREE.Sprite(baseMaterial.clone());
     sprite.visible = false;
     group.add(sprite);
@@ -803,8 +826,8 @@ function createSmokeSystem() {
       particle.velocity
         .copy(backward)
         .multiplyScalar(0.62 + intensity * 0.86)
-        .addScaledVector(sideVector, (Math.random() - 0.5) * 0.38)
-        .add(new THREE.Vector3(0, 0.035 + intensity * 0.055, 0));
+        .addScaledVector(sideVector, (Math.random() - 0.5) * 0.38);
+      particle.velocity.y += 0.035 + intensity * 0.055;
     },
     update(delta) {
       for (const particle of particles) {
@@ -824,18 +847,19 @@ function createSmokeSystem() {
   };
 }
 
-function makeSmokeTexture() {
+function makeSmokeTexture(size) {
   const smokeCanvas = document.createElement('canvas');
-  smokeCanvas.width = 128;
-  smokeCanvas.height = 128;
+  smokeCanvas.width = size;
+  smokeCanvas.height = size;
   const context = smokeCanvas.getContext('2d');
-  const gradient = context.createRadialGradient(64, 64, 5, 64, 64, 61);
+  const center = size / 2;
+  const gradient = context.createRadialGradient(center, center, size * 0.04, center, center, size * 0.48);
   gradient.addColorStop(0, 'rgba(255,255,255,0.92)');
   gradient.addColorStop(0.32, 'rgba(218,222,211,0.5)');
   gradient.addColorStop(0.68, 'rgba(150,157,149,0.16)');
   gradient.addColorStop(1, 'rgba(110,116,110,0)');
   context.fillStyle = gradient;
-  context.fillRect(0, 0, 128, 128);
+  context.fillRect(0, 0, size, size);
   return new THREE.CanvasTexture(smokeCanvas);
 }
 
@@ -861,84 +885,145 @@ function createSkidSystem() {
 }
 
 function createTrailMesh(parent, color) {
-  const maxPoints = 420;
+  const maxPoints = quality.skidPoints;
   const width = 0.23;
-  const points = [];
+  const points = Array.from({ length: maxPoints }, () => ({
+    position: new THREE.Vector3(),
+    strength: 0,
+  }));
+  let pointCount = 0;
   const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(maxPoints * 2 * 3);
+  const colors = new Float32Array(maxPoints * 2 * 3);
+  const indices = new Uint16Array((maxPoints - 1) * 6);
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
     opacity: 0.82,
     depthWrite: false,
     side: THREE.DoubleSide,
+    vertexColors: true,
   });
+
+  for (let i = 0; i < maxPoints - 1; i += 1) {
+    const vertex = i * 2;
+    const index = i * 6;
+    indices[index] = vertex;
+    indices[index + 1] = vertex + 1;
+    indices[index + 2] = vertex + 2;
+    indices[index + 3] = vertex + 1;
+    indices[index + 4] = vertex + 3;
+    indices[index + 5] = vertex + 2;
+  }
+
+  const positionAttribute = new THREE.BufferAttribute(positions, 3);
+  const colorAttribute = new THREE.BufferAttribute(colors, 3);
+  positionAttribute.setUsage(THREE.DynamicDrawUsage);
+  colorAttribute.setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute('position', positionAttribute);
+  geometry.setAttribute('color', colorAttribute);
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.setDrawRange(0, 0);
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 64);
+
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = 1;
   parent.add(mesh);
 
+  function pushPoint(x, y, z, strength) {
+    if (pointCount === maxPoints) {
+      for (let i = 1; i < maxPoints; i += 1) {
+        points[i - 1].position.copy(points[i].position);
+        points[i - 1].strength = points[i].strength;
+      }
+      pointCount -= 1;
+    }
+
+    points[pointCount].position.set(x, y, z);
+    points[pointCount].strength = strength;
+    pointCount += 1;
+  }
+
   return {
     clear() {
-      points.length = 0;
+      pointCount = 0;
       geometry.setDrawRange(0, 0);
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-      geometry.setIndex([]);
     },
     add(point, slip) {
-      const grounded = point.clone();
-      grounded.y = 0.038;
-
-      const last = points.at(-1);
-      if (last && last.position.distanceTo(grounded) < 0.11) return;
+      const x = point.x;
+      const y = 0.038;
+      const z = point.z;
+      const last = pointCount > 0 ? points[pointCount - 1] : null;
+      if (last) {
+        const distanceX = last.position.x - x;
+        const distanceZ = last.position.z - z;
+        if (distanceX * distanceX + distanceZ * distanceZ < 0.0121) return;
+      }
 
       if (last) {
-        const distance = last.position.distanceTo(grounded);
+        const distanceX = x - last.position.x;
+        const distanceZ = z - last.position.z;
+        const distance = Math.hypot(distanceX, distanceZ);
         const steps = Math.min(5, Math.floor(distance / 0.16));
         for (let i = 1; i < steps; i += 1) {
-          points.push({
-            position: last.position.clone().lerp(grounded, i / steps),
-            strength: THREE.MathUtils.lerp(last.strength, slip, i / steps),
-          });
+          const t = i / steps;
+          pushPoint(
+            THREE.MathUtils.lerp(last.position.x, x, t),
+            y,
+            THREE.MathUtils.lerp(last.position.z, z, t),
+            THREE.MathUtils.lerp(last.strength, slip, t),
+          );
         }
       }
 
-      points.push({ position: grounded, strength: slip });
-      while (points.length > maxPoints) points.shift();
+      pushPoint(x, y, z, slip);
     },
     update() {
-      if (points.length < 2) {
+      if (pointCount < 2) {
         geometry.setDrawRange(0, 0);
         return;
       }
 
-      const vertices = [];
-      const colors = [];
-      const indices = [];
-
-      for (let i = 0; i < points.length; i += 1) {
+      for (let i = 0; i < pointCount; i += 1) {
+        const current = points[i];
         const previous = points[Math.max(0, i - 1)].position;
-        const next = points[Math.min(points.length - 1, i + 1)].position;
-        const tangent = next.clone().sub(previous);
-        if (tangent.lengthSq() < 0.0001) tangent.set(0, 0, 1);
-        tangent.normalize();
-        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).multiplyScalar(width * (0.75 + points[i].strength * 0.35));
-        const left = points[i].position.clone().add(normal);
-        const right = points[i].position.clone().sub(normal);
-        vertices.push(left.x, left.y, left.z, right.x, right.y, right.z);
+        const next = points[Math.min(pointCount - 1, i + 1)].position;
+        let tangentX = next.x - previous.x;
+        let tangentZ = next.z - previous.z;
+        const tangentLengthSq = tangentX * tangentX + tangentZ * tangentZ;
 
-        const shade = 0.018 + points[i].strength * 0.032;
-        colors.push(shade, shade, shade, shade, shade, shade);
-
-        if (i < points.length - 1) {
-          const base = i * 2;
-          indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        if (tangentLengthSq < 0.0001) {
+          tangentX = 0;
+          tangentZ = 1;
+        } else {
+          const inverseLength = 1 / Math.sqrt(tangentLengthSq);
+          tangentX *= inverseLength;
+          tangentZ *= inverseLength;
         }
+
+        const halfWidth = width * (0.75 + current.strength * 0.35);
+        const normalX = -tangentZ * halfWidth;
+        const normalZ = tangentX * halfWidth;
+        const vertexIndex = i * 6;
+        positions[vertexIndex] = current.position.x + normalX;
+        positions[vertexIndex + 1] = current.position.y;
+        positions[vertexIndex + 2] = current.position.z + normalZ;
+        positions[vertexIndex + 3] = current.position.x - normalX;
+        positions[vertexIndex + 4] = current.position.y;
+        positions[vertexIndex + 5] = current.position.z - normalZ;
+
+        const shade = 0.018 + current.strength * 0.032;
+        colors[vertexIndex] = shade;
+        colors[vertexIndex + 1] = shade;
+        colors[vertexIndex + 2] = shade;
+        colors[vertexIndex + 3] = shade;
+        colors[vertexIndex + 4] = shade;
+        colors[vertexIndex + 5] = shade;
       }
 
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-      geometry.setIndex(indices);
-      geometry.computeBoundingSphere();
-      material.vertexColors = true;
+      positionAttribute.needsUpdate = true;
+      colorAttribute.needsUpdate = true;
+      geometry.setDrawRange(0, (pointCount - 1) * 6);
     },
   };
 }
@@ -1036,7 +1121,7 @@ function updateVehicle(delta) {
   vehicle.wheelSpinFront += Math.max(0.8, Math.abs(frontLong)) * delta * 2.8;
   vehicle.wheelSpinRear += (Math.max(1, Math.abs(rearLong)) * 3.2 + Math.abs(rearDriveForce) * 1.1 * vehicle.rearSlip) * delta;
 
-  vehicle.contacts = getWheelContactData(vehicle);
+  updateWheelContactData(vehicle);
 }
 
 function updateCarVisuals(delta) {
@@ -1125,7 +1210,7 @@ function resetVehicle(manual) {
   vehicle.rearSlip = 0;
   vehicle.frontSlip = 0;
   vehicle.lateralG = 0;
-  vehicle.contacts = getWheelContactData(vehicle);
+  updateWheelContactData(vehicle);
   state.smokeAccumulator = 0;
 }
 
@@ -1360,11 +1445,12 @@ function updateEffects(delta) {
   const emissions = Math.floor(state.smokeAccumulator);
   state.smokeAccumulator -= emissions;
 
-  const rearContacts = contacts.filter((contact) => !contact.front);
-  for (let i = 0; i < rearContacts.length; i += 1) {
-    const contact = rearContacts[i];
+  let rearIndex = 0;
+  for (const contact of contacts) {
+    if (contact.front) continue;
+
     const slip = contact.slip;
-    if (slip > 0.18) skidSystem.add(i, contact.position, slip);
+    if (slip > 0.18) skidSystem.add(rearIndex, contact.position, slip);
 
     if (slip > 0.24) {
       const count = Math.min(4, emissions);
@@ -1372,37 +1458,59 @@ function updateEffects(delta) {
         smokeSystem.emit(contact.position, contact.velocity, contact.side, slip);
       }
     }
+
+    rearIndex += 1;
   }
 }
 
-function getWheelContactData(vehicle) {
+function createWheelContactData() {
+  return car.wheels.map((wheel) => ({
+    front: wheel.front,
+    sideSign: wheel.side,
+    position: new THREE.Vector3(),
+    relative: new THREE.Vector3(),
+    velocity: new THREE.Vector3(),
+    side: new THREE.Vector3(),
+    slip: 0,
+    longitudinal: 0,
+  }));
+}
+
+function updateWheelContactData(vehicle) {
   const basis = getVehicleBasis(vehicle.yaw);
-  return car.wheels.map((wheel) => {
-    const contact = wheelContact(vehicle, wheel.localContact);
-    const velocity = pointVelocity(vehicle, contact.relative);
-    const wheelDirection = wheel.front
-      ? basis.forward.clone().multiplyScalar(Math.cos(vehicle.steer)).addScaledVector(basis.right, Math.sin(vehicle.steer)).normalize()
-      : basis.forward.clone();
-    const wheelSide = wheel.front
-      ? basis.right.clone().multiplyScalar(Math.cos(vehicle.steer)).addScaledVector(basis.forward, -Math.sin(vehicle.steer)).normalize()
-      : basis.right.clone();
-    const lateral = Math.abs(dotGround(velocity, wheelSide));
-    const longitudinal = Math.abs(dotGround(velocity, wheelDirection));
-    const slip = wheel.front
+  const cosSteer = Math.cos(vehicle.steer);
+  const sinSteer = Math.sin(vehicle.steer);
+
+  for (let i = 0; i < car.wheels.length; i += 1) {
+    const wheel = car.wheels[i];
+    const data = vehicle.contacts[i];
+    wheelContactInto(vehicle, wheel.localContact, basis, data.position, data.relative);
+    pointVelocityInto(vehicle, data.relative, data.velocity);
+
+    const wheelDirectionX = wheel.front
+      ? basis.forward.x * cosSteer + basis.right.x * sinSteer
+      : basis.forward.x;
+    const wheelDirectionZ = wheel.front
+      ? basis.forward.z * cosSteer + basis.right.z * sinSteer
+      : basis.forward.z;
+    const wheelSideX = wheel.front
+      ? basis.right.x * cosSteer - basis.forward.x * sinSteer
+      : basis.right.x;
+    const wheelSideZ = wheel.front
+      ? basis.right.z * cosSteer - basis.forward.z * sinSteer
+      : basis.right.z;
+
+    const lateral = Math.abs(data.velocity.x * wheelSideX + data.velocity.z * wheelSideZ);
+    const longitudinal = Math.abs(data.velocity.x * wheelDirectionX + data.velocity.z * wheelDirectionZ);
+
+    data.front = wheel.front;
+    data.sideSign = wheel.side;
+    data.side.set(wheelSideX * wheel.side, 0, wheelSideZ * wheel.side);
+    data.slip = wheel.front
       ? THREE.MathUtils.clamp(lateral / 4.5, 0, 1)
       : THREE.MathUtils.clamp(lateral / 2.7 + vehicle.throttle * 0.58, 0, 1);
-
-    return {
-      front: wheel.front,
-      sideSign: wheel.side,
-      position: contact.position,
-      relative: contact.relative,
-      velocity,
-      side: wheelSide.multiplyScalar(wheel.side),
-      slip,
-      longitudinal,
-    };
-  });
+    data.longitudinal = longitudinal;
+  }
 }
 
 function axleContact(vehicle, localX, localZ) {
@@ -1411,18 +1519,32 @@ function axleContact(vehicle, localX, localZ) {
 
 function wheelContact(vehicle, local) {
   const basis = getVehicleBasis(vehicle.yaw);
-  const relative = basis.right.clone().multiplyScalar(local.x).addScaledVector(basis.forward, -local.z);
-  const position = vehicle.position.clone().add(relative);
-  position.y = 0.04;
+  const relative = new THREE.Vector3();
+  const position = new THREE.Vector3();
+  wheelContactInto(vehicle, local, basis, position, relative);
   return { position, relative };
 }
 
-function pointVelocity(vehicle, relative) {
-  return new THREE.Vector3(
+function wheelContactInto(vehicle, local, basis, position, relative) {
+  relative
+    .copy(basis.right)
+    .multiplyScalar(local.x)
+    .addScaledVector(basis.forward, -local.z);
+  position.copy(vehicle.position).add(relative);
+  position.y = 0.04;
+}
+
+function pointVelocityInto(vehicle, relative, target) {
+  target.set(
     vehicle.velocity.x + vehicle.yawRate * relative.z,
     0,
     vehicle.velocity.z - vehicle.yawRate * relative.x,
   );
+  return target;
+}
+
+function pointVelocity(vehicle, relative) {
+  return pointVelocityInto(vehicle, relative, new THREE.Vector3());
 }
 
 function getVehicleBasis(yaw) {
@@ -1464,6 +1586,30 @@ function normalizeCameraAngle(angle) {
   return THREE.MathUtils.clamp(normalized, -Math.PI, Math.PI);
 }
 
+function disposeObjectTree(root) {
+  const disposedMaterials = new WeakSet();
+  const disposedGeometries = new WeakSet();
+
+  root.traverse((child) => {
+    if (child.geometry && !disposedGeometries.has(child.geometry)) {
+      child.geometry.dispose();
+      disposedGeometries.add(child.geometry);
+    }
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material || disposedMaterials.has(material)) continue;
+
+      for (const value of Object.values(material)) {
+        if (value?.isTexture) value.dispose();
+      }
+
+      material.dispose();
+      disposedMaterials.add(material);
+    }
+  });
+}
+
 function onResize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -1472,9 +1618,13 @@ function onResize() {
   camera.fov = getResponsiveFov();
   camera.updateProjectionMatrix();
   renderer.setSize(width, height);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(getRenderPixelRatio());
 }
 
 function getResponsiveFov() {
   return window.innerWidth < 560 ? 58 : 48;
+}
+
+function getRenderPixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, quality.pixelRatioCap);
 }
