@@ -250,6 +250,11 @@ canvas.addEventListener('wheel', (event) => {
 }, { passive: false });
 
 playButton.addEventListener('click', () => {
+  if (state.screen === 'paused') {
+    resumeGame();
+    return;
+  }
+
   showMenuPanel('levels');
 });
 
@@ -269,6 +274,11 @@ for (const button of document.querySelectorAll('[data-level]')) {
 
 for (const button of document.querySelectorAll('[data-back-menu]')) {
   button.addEventListener('click', () => {
+    if (state.screen === 'paused') {
+      showPauseMenu();
+      return;
+    }
+
     showMainMenu();
   });
 }
@@ -333,7 +343,13 @@ window.addEventListener('keydown', (event) => {
   }
 
   if (event.key === 'Escape') {
-    showMainMenu();
+    if (state.screen === 'playing') {
+      pauseGame();
+    } else if (state.screen === 'paused') {
+      resumeGame();
+    } else {
+      showMainMenu();
+    }
     return;
   }
 
@@ -1392,10 +1408,37 @@ function startLevel(levelIndex) {
   state.manual = true;
   state.paused = false;
   modeToggle.textContent = 'Play auto';
+  playButton.textContent = 'Play';
   levelSystem.setLevel(levelIndex);
   smokeSystem.clear();
   skidSystem.clear();
   resetVehicle(true);
+  updateStatusText();
+  hud.hidden = false;
+  menuOverlay.hidden = true;
+  clearMovementInput();
+}
+
+function pauseGame() {
+  if (state.screen !== 'playing') return;
+
+  state.screen = 'paused';
+  state.paused = true;
+  state.bindingTarget = null;
+  updateStatusText();
+  hud.hidden = false;
+  menuOverlay.hidden = false;
+  showPauseMenu();
+  clearMovementInput();
+}
+
+function resumeGame() {
+  if (state.screen !== 'paused') return;
+
+  state.screen = 'playing';
+  state.paused = false;
+  state.bindingTarget = null;
+  playButton.textContent = 'Play';
   updateStatusText();
   hud.hidden = false;
   menuOverlay.hidden = true;
@@ -1407,12 +1450,18 @@ function showMainMenu() {
   state.paused = true;
   state.manual = false;
   state.bindingTarget = null;
+  playButton.textContent = 'Play';
   modeToggle.textContent = 'Play manual';
   updateStatusText();
   hud.hidden = true;
   menuOverlay.hidden = false;
   showMenuPanel('main');
   clearMovementInput();
+}
+
+function showPauseMenu() {
+  playButton.textContent = 'Resume';
+  showMenuPanel('main');
 }
 
 function showMenuPanel(name) {
