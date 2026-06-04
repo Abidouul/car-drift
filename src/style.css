@@ -267,6 +267,63 @@ h2 {
   margin: 0;
 }
 
+.settings-group {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgb(255 255 255 / 14%);
+}
+
+.settings-heading {
+  margin: 0;
+  color: #ffdd67;
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.keybind-list {
+  display: grid;
+  gap: 8px;
+}
+
+.keybind-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  color: #f4f6f0;
+  font-size: 0.92rem;
+  font-weight: 850;
+}
+
+.keybind-button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-color: rgb(255 255 255 / 20%);
+  background: rgb(255 255 255 / 10%);
+  color: #f4f6f0;
+  font-size: 0.84rem;
+}
+
+.keybind-button:hover,
+.keybind-button.is-listening {
+  border-color: rgb(255 221 103 / 72%);
+  background: #ffdd67;
+  color: #11140f;
+}
+
+.keybind-status {
+  min-height: 1.1rem;
+  margin: 0;
+  color: #aeb7b4;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

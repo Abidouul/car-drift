@@ -15,11 +15,29 @@ const playButton = document.querySelector('#play-button');
 const optionsButton = document.querySelector('#options-button');
 const quitButton = document.querySelector('#quit-button');
 const shadowsToggle = document.querySelector('#shadows-toggle');
+const keybindButtons = [...document.querySelectorAll('[data-bind-action]')];
+const keybindStatusEl = document.querySelector('#keybind-status');
+const resetBindingsButton = document.querySelector('#reset-bindings');
 const panels = {
   main: document.querySelector('[data-panel="main"]'),
   levels: document.querySelector('[data-panel="levels"]'),
   options: document.querySelector('[data-panel="options"]'),
   quit: document.querySelector('[data-panel="quit"]'),
+};
+
+const movementActions = ['up', 'left', 'right', 'down'];
+const actionLabels = {
+  up: 'Forward',
+  left: 'Left',
+  right: 'Right',
+  down: 'Reverse',
+};
+const keyBindingStorageKey = 'driftDonut.keyBindings.v1';
+const defaultKeyBindings = {
+  up: { key: 'z', code: 'KeyW', label: 'Z' },
+  left: { key: 'q', code: 'KeyA', label: 'Q' },
+  right: { key: 'd', code: 'KeyD', label: 'D' },
+  down: { key: 's', code: 'KeyS', label: 'S' },
 };
 
 const scene = new THREE.Scene();
@@ -56,6 +74,8 @@ const state = {
   cameraZoom: 1,
   cameraAngle: 0,
   cameraHeight: 1,
+  bindingTarget: null,
+  keyBindings: loadKeyBindings(),
   pointer: {
     active: false,
     lastX: 0,
@@ -173,6 +193,20 @@ shadowsToggle.addEventListener('change', () => {
   setShadows(shadowsToggle.checked);
 });
 
+for (const button of keybindButtons) {
+  button.addEventListener('click', () => {
+    startKeyBinding(button.dataset.bindAction);
+  });
+}
+
+resetBindingsButton.addEventListener('click', () => {
+  state.bindingTarget = null;
+  state.keyBindings = cloneDefaultKeyBindings();
+  saveKeyBindings();
+  clearMovementInput();
+  renderKeyBindings('Controls reset');
+});
+
 modeToggle.addEventListener('click', () => {
   state.manual = !state.manual;
   modeToggle.textContent = state.manual ? 'Play auto' : 'Play manual';
@@ -189,6 +223,11 @@ cameraAngle.addEventListener('input', () => {
 });
 
 window.addEventListener('keydown', (event) => {
+  if (state.bindingTarget) {
+    captureKeyBinding(event);
+    return;
+  }
+
   if (event.key === 'Escape') {
     showMainMenu();
     return;
@@ -206,6 +245,7 @@ window.addEventListener('keyup', (event) => {
 });
 
 window.addEventListener('resize', onResize);
+renderKeyBindings();
 showMainMenu();
 animate();
 
@@ -1109,6 +1149,7 @@ function showMainMenu() {
   state.screen = 'menu';
   state.paused = true;
   state.manual = false;
+  state.bindingTarget = null;
   modeToggle.textContent = 'Play manual';
   updateStatusText();
   hud.hidden = true;
@@ -1127,6 +1168,7 @@ function quitGame() {
   state.screen = 'quit';
   state.paused = true;
   state.manual = false;
+  state.bindingTarget = null;
   hud.hidden = true;
   menuOverlay.hidden = false;
   showMenuPanel('quit');
@@ -1153,6 +1195,125 @@ function updateStatusText() {
   statusEl.textContent = state.manual ? 'Manual' : 'Looping';
 }
 
+function startKeyBinding(action) {
+  if (!movementActions.includes(action)) return;
+
+  state.bindingTarget = action;
+  clearMovementInput();
+  renderKeyBindings(`Set ${actionLabels[action].toLowerCase()}`);
+}
+
+function captureKeyBinding(event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const action = state.bindingTarget;
+  if (!action) return;
+
+  if (event.key === 'Escape') {
+    state.bindingTarget = null;
+    renderKeyBindings('Cancelled');
+    return;
+  }
+
+  const binding = normalizeKeyBinding(event);
+  if (!binding) {
+    renderKeyBindings('Choose a letter or number key');
+    return;
+  }
+
+  const duplicateAction = movementActions.find((candidate) => (
+    candidate !== action && matchesKeyBinding(event, state.keyBindings[candidate])
+  ));
+  if (duplicateAction) {
+    renderKeyBindings(`${binding.label} is already ${actionLabels[duplicateAction].toLowerCase()}`);
+    return;
+  }
+
+  state.keyBindings[action] = binding;
+  state.bindingTarget = null;
+  saveKeyBindings();
+  renderKeyBindings();
+}
+
+function renderKeyBindings(message = '') {
+  for (const button of keybindButtons) {
+    const action = button.dataset.bindAction;
+    const binding = state.keyBindings[action] ?? defaultKeyBindings[action];
+    const isListening = state.bindingTarget === action;
+    button.textContent = isListening ? 'Press key' : binding.label;
+    button.classList.toggle('is-listening', isListening);
+    button.setAttribute('aria-label', `${actionLabels[action]} key ${binding.label}`);
+  }
+
+  keybindStatusEl.textContent = message;
+}
+
+function loadKeyBindings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(keyBindingStorageKey));
+    if (!saved || typeof saved !== 'object') return cloneDefaultKeyBindings();
+
+    const bindings = cloneDefaultKeyBindings();
+    for (const action of movementActions) {
+      const binding = saved[action];
+      if (isValidStoredBinding(binding)) bindings[action] = binding;
+    }
+    return bindings;
+  } catch {
+    return cloneDefaultKeyBindings();
+  }
+}
+
+function saveKeyBindings() {
+  try {
+    localStorage.setItem(keyBindingStorageKey, JSON.stringify(state.keyBindings));
+  } catch {
+    keybindStatusEl.textContent = 'Controls saved for this session';
+  }
+}
+
+function cloneDefaultKeyBindings() {
+  return Object.fromEntries(
+    Object.entries(defaultKeyBindings).map(([action, binding]) => [action, { ...binding }]),
+  );
+}
+
+function isValidStoredBinding(binding) {
+  return Boolean(
+    binding
+      && typeof binding.key === 'string'
+      && typeof binding.code === 'string'
+      && typeof binding.label === 'string',
+  );
+}
+
+function normalizeKeyBinding(event) {
+  if (
+    event.key.startsWith('Arrow')
+    || event.key === 'Shift'
+    || event.key === 'Control'
+    || event.key === 'Alt'
+    || event.key === 'Meta'
+    || event.key === 'CapsLock'
+    || event.key === 'Tab'
+  ) {
+    return null;
+  }
+
+  return {
+    key: event.key.toLowerCase(),
+    code: event.code,
+    label: formatKeyLabel(event),
+  };
+}
+
+function formatKeyLabel(event) {
+  if (event.code === 'Space') return 'Space';
+  if (event.key.length === 1) return event.key.toUpperCase();
+  return event.key;
+}
+
 function isMovementKey(event) {
   return getMovementDirection(event) !== null;
 }
@@ -1173,11 +1334,21 @@ function clearMovementInput() {
 function getMovementDirection(event) {
   const key = event.key.toLowerCase();
   const code = event.code;
-  if (event.key === 'ArrowUp' || key === 'z' || key === 'w' || code === 'KeyZ' || code === 'KeyW') return 'up';
-  if (event.key === 'ArrowDown' || key === 's' || code === 'KeyS') return 'down';
-  if (event.key === 'ArrowLeft' || key === 'q' || key === 'a' || code === 'KeyQ' || code === 'KeyA') return 'left';
-  if (event.key === 'ArrowRight' || key === 'd' || code === 'KeyD') return 'right';
+  if (event.key === 'ArrowUp') return 'up';
+  if (event.key === 'ArrowDown') return 'down';
+  if (event.key === 'ArrowLeft') return 'left';
+  if (event.key === 'ArrowRight') return 'right';
+
+  for (const action of movementActions) {
+    if (matchesKeyBinding({ key, code }, state.keyBindings[action])) return action;
+  }
+
   return null;
+}
+
+function matchesKeyBinding(event, binding) {
+  if (!binding) return false;
+  return event.key.toLowerCase() === binding.key || event.code === binding.code;
 }
 
 function updateEffects(delta) {
