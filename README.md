@@ -10,11 +10,12 @@ Written some prompts with Conductor and here are all the implementations that I 
   - Enable/Disable Shadows (Preven to be helping with performance by not using alot of computing power)
   - Modify keybinds for car steering
   - Added Quality preset (High, Medium, Low and Lowest) 
-  _ Added a Resolution Scale slider that starts at 240p to a mawimum of 1080p
+  - Added a Resolution Scale slider that starts at 240p to a mawimum of 1080p
+  - Added a Shadow Quality Preset (High, Medium, Low and Off : the lower the setting the more pixaleted the shadows are) 
 
 - Optimized the game to use less RAM and CPU.
 - Optimized the game to use more GPU power than RAM and CPU power.
-- ...
+- Changed Shadows to fake Shadows on low.
 
 Implementations that I wish to do in the future : 
 
