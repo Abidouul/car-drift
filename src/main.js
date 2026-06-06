@@ -21,6 +21,7 @@ const resetBindingsButton = document.querySelector('#reset-bindings');
 const graphicsPresetSelect = document.querySelector('#graphics-preset');
 const resolutionScaleInput = document.querySelector('#resolution-scale');
 const resolutionValueEl = document.querySelector('#resolution-value');
+const frameRateLimitSelect = document.querySelector('#frame-rate-limit');
 const panels = {
   main: document.querySelector('[data-panel="main"]'),
   levels: document.querySelector('[data-panel="levels"]'),
@@ -51,6 +52,7 @@ const graphicsPresets = {
   high: {
     label: 'High',
     defaultResolutionScale: 100,
+    defaultFrameRateLimit: 60,
     antialias: true,
     shadows: true,
     shadowMapSize: 1024,
@@ -68,6 +70,7 @@ const graphicsPresets = {
   medium: {
     label: 'Medium',
     defaultResolutionScale: smallMachine ? 52 : 70,
+    defaultFrameRateLimit: 60,
     antialias: !smallMachine,
     shadows: true,
     shadowMapSize: 768,
@@ -85,6 +88,7 @@ const graphicsPresets = {
   low: {
     label: 'Low',
     defaultResolutionScale: 28,
+    defaultFrameRateLimit: 45,
     antialias: false,
     shadows: false,
     shadowMapSize: 384,
@@ -102,6 +106,7 @@ const graphicsPresets = {
   lowest: {
     label: 'Lowest',
     defaultResolutionScale: 0,
+    defaultFrameRateLimit: 30,
     antialias: false,
     shadows: false,
     shadowMapSize: 128,
@@ -119,6 +124,7 @@ const graphicsPresets = {
 };
 let graphicsSettings = loadGraphicsSettings();
 let keyLight;
+let lastFrameAt = 0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07090a);
@@ -307,6 +313,7 @@ graphicsPresetSelect.addEventListener('change', () => {
   graphicsSettings = {
     preset,
     resolutionScale: profile.defaultResolutionScale,
+    frameRateLimit: profile.defaultFrameRateLimit,
     shadows: profile.shadows,
   };
   saveGraphicsSettings();
@@ -319,6 +326,14 @@ resolutionScaleInput.addEventListener('input', () => {
   saveGraphicsSettings();
   renderGraphicsSettings();
   applyGraphicsSettings();
+});
+
+frameRateLimitSelect.addEventListener('change', () => {
+  graphicsSettings.frameRateLimit = Number(frameRateLimitSelect.value);
+  lastFrameAt = 0;
+  clock.getDelta();
+  saveGraphicsSettings();
+  renderGraphicsSettings();
 });
 
 modeToggle.addEventListener('click', () => {
@@ -1215,8 +1230,12 @@ function createTrailMesh(parent, color) {
   };
 }
 
-function animate() {
+function animate(now = 0) {
   requestAnimationFrame(animate);
+
+  const frameInterval = getFrameInterval();
+  if (frameInterval > 0 && lastFrameAt > 0 && now - lastFrameAt < frameInterval) return;
+  lastFrameAt = now;
 
   const rawDelta = clock.getDelta();
   const delta = Math.min(rawDelta, 0.033);
@@ -1494,7 +1513,7 @@ function applyShadowSetting() {
 }
 
 function loadGraphicsSettings() {
-  const defaultPreset = smallMachine ? 'low' : 'medium';
+  const defaultPreset = smallMachine ? 'lowest' : 'medium';
   const fallback = graphicsPresets[defaultPreset];
 
   try {
@@ -1508,12 +1527,14 @@ function loadGraphicsSettings() {
         0,
         100,
       ),
+      frameRateLimit: normalizeFrameRateLimit(saved.frameRateLimit, profile.defaultFrameRateLimit),
       shadows: typeof saved.shadows === 'boolean' ? saved.shadows : profile.shadows,
     };
   } catch {
     return {
       preset: defaultPreset,
       resolutionScale: fallback.defaultResolutionScale,
+      frameRateLimit: fallback.defaultFrameRateLimit,
       shadows: fallback.shadows,
     };
   }
@@ -1531,6 +1552,11 @@ function getTargetRenderHeight(scale) {
   return Math.round(THREE.MathUtils.lerp(240, 1080, THREE.MathUtils.clamp(scale, 0, 100) / 100));
 }
 
+function normalizeFrameRateLimit(value, fallback) {
+  const limit = Number(value);
+  return [0, 30, 45, 60].includes(limit) ? limit : fallback;
+}
+
 function getCurrentLevelFogDensity() {
   return state.levelFogDensity * getGraphicsProfile().fogDensityMultiplier;
 }
@@ -1540,6 +1566,10 @@ function renderGraphicsSettings() {
   graphicsPresetSelect.value = graphicsSettings.preset;
   resolutionScaleInput.value = String(Math.round(graphicsSettings.resolutionScale));
   resolutionValueEl.textContent = `${targetHeight}p`;
+  frameRateLimitSelect.value = String(normalizeFrameRateLimit(
+    graphicsSettings.frameRateLimit,
+    getGraphicsProfile().defaultFrameRateLimit,
+  ));
   shadowsToggle.checked = graphicsSettings.shadows;
   shadowsToggle.disabled = !getGraphicsProfile().shadows;
 }
@@ -1930,6 +1960,11 @@ function getRenderPixelRatio() {
   const targetHeight = getTargetRenderHeight(graphicsSettings.resolutionScale);
   const targetRatio = targetHeight / Math.max(1, window.innerHeight);
   return THREE.MathUtils.clamp(targetRatio, 0.22, 4);
+}
+
+function getFrameInterval() {
+  const limit = normalizeFrameRateLimit(graphicsSettings.frameRateLimit, getGraphicsProfile().defaultFrameRateLimit);
+  return limit > 0 ? 1000 / limit : 0;
 }
 
 function getResponsiveFov() {
