@@ -15,7 +15,7 @@ Written some prompts with Conductor and here are all the implementations that I 
 
 - Optimized the game to use less RAM and CPU.
 - Optimized the game to use more GPU power than RAM and CPU power.
-- Changed Shadows to fake Shadows on low.
+- Replaced Real Shadows to fake Shadows on low to make CPU run lighter.
 
 Implementations that I wish to do in the future : 
 
