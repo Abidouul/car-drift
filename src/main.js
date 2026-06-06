@@ -14,7 +14,7 @@ const menuOverlay = document.querySelector('.menu-overlay');
 const playButton = document.querySelector('#play-button');
 const optionsButton = document.querySelector('#options-button');
 const quitButton = document.querySelector('#quit-button');
-const shadowsToggle = document.querySelector('#shadows-toggle');
+const shadowQualitySelect = document.querySelector('#shadow-quality');
 const keybindButtons = [...document.querySelectorAll('[data-bind-action]')];
 const keybindStatusEl = document.querySelector('#keybind-status');
 const resetBindingsButton = document.querySelector('#reset-bindings');
@@ -48,15 +48,35 @@ const smallMachine = (navigator.deviceMemory && navigator.deviceMemory <= 4)
   || navigator.hardwareConcurrency <= 4
   || window.matchMedia('(max-width: 640px)').matches;
 const graphicsStorageKey = 'driftDonut.graphics.v1';
+const shadowQualities = {
+  high: {
+    enabled: true,
+    mapSize: 1024,
+    type: THREE.PCFSoftShadowMap,
+  },
+  medium: {
+    enabled: true,
+    mapSize: 768,
+    type: THREE.PCFShadowMap,
+  },
+  low: {
+    enabled: true,
+    mapSize: 384,
+    type: THREE.BasicShadowMap,
+  },
+  off: {
+    enabled: false,
+    mapSize: 128,
+    type: THREE.BasicShadowMap,
+  },
+};
 const graphicsPresets = {
   high: {
     label: 'High',
     defaultResolutionScale: 100,
     defaultFrameRateLimit: 60,
+    defaultShadowQuality: 'high',
     antialias: true,
-    shadows: true,
-    shadowMapSize: 1024,
-    shadowType: THREE.PCFSoftShadowMap,
     smokeParticles: 180,
     smokeTextureSize: 96,
     skidPoints: 320,
@@ -71,10 +91,8 @@ const graphicsPresets = {
     label: 'Medium',
     defaultResolutionScale: smallMachine ? 52 : 70,
     defaultFrameRateLimit: 60,
+    defaultShadowQuality: 'medium',
     antialias: !smallMachine,
-    shadows: true,
-    shadowMapSize: 768,
-    shadowType: THREE.PCFShadowMap,
     smokeParticles: 120,
     smokeTextureSize: 64,
     skidPoints: 240,
@@ -89,10 +107,8 @@ const graphicsPresets = {
     label: 'Low',
     defaultResolutionScale: 28,
     defaultFrameRateLimit: 45,
+    defaultShadowQuality: 'off',
     antialias: false,
-    shadows: false,
-    shadowMapSize: 384,
-    shadowType: THREE.BasicShadowMap,
     smokeParticles: 48,
     smokeTextureSize: 48,
     skidPoints: 120,
@@ -107,10 +123,8 @@ const graphicsPresets = {
     label: 'Lowest',
     defaultResolutionScale: 0,
     defaultFrameRateLimit: 30,
+    defaultShadowQuality: 'off',
     antialias: false,
-    shadows: false,
-    shadowMapSize: 128,
-    shadowType: THREE.BasicShadowMap,
     smokeParticles: 0,
     smokeTextureSize: 32,
     skidPoints: 2,
@@ -140,8 +154,8 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(getRenderPixelRatio());
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = graphicsSettings.shadows && getGraphicsProfile().shadows;
-renderer.shadowMap.type = getGraphicsProfile().shadowType;
+renderer.shadowMap.enabled = getShadowQualitySettings().enabled;
+renderer.shadowMap.type = getShadowQualitySettings().type;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
@@ -156,7 +170,7 @@ const state = {
   manual: false,
   screen: 'menu',
   level: 0,
-  shadows: graphicsSettings.shadows,
+  shadows: getShadowQualitySettings().enabled,
   levelFogDensity: 0.022,
   cameraZoom: 1,
   cameraAngle: 0,
@@ -289,8 +303,8 @@ for (const button of document.querySelectorAll('[data-back-menu]')) {
   });
 }
 
-shadowsToggle.addEventListener('change', () => {
-  setShadows(shadowsToggle.checked);
+shadowQualitySelect.addEventListener('change', () => {
+  setShadowQuality(shadowQualitySelect.value);
 });
 
 for (const button of keybindButtons) {
@@ -314,7 +328,7 @@ graphicsPresetSelect.addEventListener('change', () => {
     preset,
     resolutionScale: profile.defaultResolutionScale,
     frameRateLimit: profile.defaultFrameRateLimit,
-    shadows: profile.shadows,
+    shadowQuality: profile.defaultShadowQuality,
   };
   saveGraphicsSettings();
   renderGraphicsSettings();
@@ -391,7 +405,7 @@ function setupLights() {
   const key = new THREE.DirectionalLight(0xfff0cd, 4.2);
   key.position.set(-10, 15, 8);
   key.castShadow = true;
-  key.shadow.mapSize.set(getGraphicsProfile().shadowMapSize, getGraphicsProfile().shadowMapSize);
+  key.shadow.mapSize.set(getShadowQualitySettings().mapSize, getShadowQualitySettings().mapSize);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 48;
   key.shadow.camera.left = -20;
@@ -519,38 +533,46 @@ function createDockyardProps(parent) {
   });
   const poleGeometry = new THREE.CylinderGeometry(0.07, 0.07, 4.2, 10);
   const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x2c3334, roughness: 0.5, metalness: 0.2 });
+  const containerTransforms = containerMaterials.map(() => []);
+  const coneTransforms = [];
+  const poleTransforms = [];
 
   for (let i = 0; i < 10; i += 1) {
-    const stack = new THREE.Group();
-    const box = new THREE.Mesh(containerGeometry, containerMaterials[i % containerMaterials.length]);
-    box.castShadow = true;
-    box.receiveShadow = true;
-    stack.add(box);
     const angle = (i / 10) * Math.PI * 2;
     const radius = 14 + (i % 2) * 4;
-    stack.position.set(Math.cos(angle) * radius, 0.55, Math.sin(angle) * radius);
-    stack.rotation.y = -angle + Math.PI / 2 + (i % 3) * 0.12;
-    parent.add(stack);
+    containerTransforms[i % containerTransforms.length].push({
+      position: [Math.cos(angle) * radius, 0.55, Math.sin(angle) * radius],
+      rotation: [0, -angle + Math.PI / 2 + (i % 3) * 0.12, 0],
+    });
   }
 
   for (let i = 0; i < 18; i += 1) {
-    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
     const angle = (i / 18) * Math.PI * 2;
-    cone.position.set(Math.cos(angle) * 7.2, 0.26, Math.sin(angle) * 7.2);
-    cone.castShadow = true;
-    parent.add(cone);
+    coneTransforms.push({
+      position: [Math.cos(angle) * 7.2, 0.26, Math.sin(angle) * 7.2],
+    });
   }
 
   for (let i = 0; i < 6; i += 1) {
-    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
     const lamp = new THREE.PointLight(0xffc067, 18, 12, 2.2);
     const angle = (i / 6) * Math.PI * 2 + 0.35;
-    pole.position.set(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
-    lamp.position.copy(pole.position).add(new THREE.Vector3(0, 2.1, 0));
+    const position = new THREE.Vector3(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
+    poleTransforms.push({
+      position: [position.x, position.y, position.z],
+    });
+    lamp.position.copy(position).add(new THREE.Vector3(0, 2.1, 0));
     lamp.userData.levelLight = true;
-    pole.castShadow = true;
-    parent.add(pole, lamp);
+    parent.add(lamp);
   }
+
+  for (let i = 0; i < containerTransforms.length; i += 1) {
+    addInstancedMesh(parent, containerGeometry, containerMaterials[i], containerTransforms[i], {
+      castShadow: true,
+      receiveShadow: true,
+    });
+  }
+  addInstancedMesh(parent, coneGeometry, coneMaterial, coneTransforms, { castShadow: true });
+  addInstancedMesh(parent, poleGeometry, poleMaterial, poleTransforms, { castShadow: true });
 }
 
 function createFrostTerminalProps(parent) {
@@ -567,39 +589,51 @@ function createFrostTerminalProps(parent) {
   ];
   const mastGeometry = new THREE.CylinderGeometry(0.06, 0.06, 3.6, 10);
   const mastMaterial = new THREE.MeshStandardMaterial({ color: 0x334b56, roughness: 0.48, metalness: 0.3 });
+  const bankTransforms = [];
+  const barrierTransforms = barrierMaterials.map(() => []);
+  const mastTransforms = [];
 
   for (let i = 0; i < 16; i += 1) {
-    const bank = new THREE.Mesh(bankGeometry, bankMaterial);
     const angle = (i / 16) * Math.PI * 2;
     const radius = 9.2 + (i % 4) * 1.1;
-    bank.scale.set(2.8 + Math.random() * 1.8, 0.32, 0.75 + Math.random() * 0.5);
-    bank.position.set(Math.cos(angle) * radius, 0.16, Math.sin(angle) * radius);
-    bank.rotation.y = -angle + Math.PI / 2;
-    bank.castShadow = true;
-    bank.receiveShadow = true;
-    parent.add(bank);
+    bankTransforms.push({
+      position: [Math.cos(angle) * radius, 0.16, Math.sin(angle) * radius],
+      rotation: [0, -angle + Math.PI / 2, 0],
+      scale: [2.8 + Math.random() * 1.8, 0.32, 0.75 + Math.random() * 0.5],
+    });
   }
 
   for (let i = 0; i < 9; i += 1) {
-    const barrier = new THREE.Mesh(barrierGeometry, barrierMaterials[i % 2]);
     const angle = (i / 9) * Math.PI * 2 + 0.2;
-    barrier.position.set(Math.cos(angle) * 15.5, 0.36, Math.sin(angle) * 15.5);
-    barrier.rotation.y = -angle + Math.PI / 2;
-    barrier.castShadow = true;
-    barrier.receiveShadow = true;
-    parent.add(barrier);
+    barrierTransforms[i % 2].push({
+      position: [Math.cos(angle) * 15.5, 0.36, Math.sin(angle) * 15.5],
+      rotation: [0, -angle + Math.PI / 2, 0],
+    });
   }
 
   for (let i = 0; i < 7; i += 1) {
-    const mast = new THREE.Mesh(mastGeometry, mastMaterial);
     const lamp = new THREE.PointLight(0x8de8ff, 18, 12, 2.2);
     const angle = (i / 7) * Math.PI * 2;
-    mast.position.set(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
-    lamp.position.copy(mast.position).add(new THREE.Vector3(0, 1.6, 0));
+    const position = new THREE.Vector3(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
+    mastTransforms.push({
+      position: [position.x, position.y, position.z],
+    });
+    lamp.position.copy(position).add(new THREE.Vector3(0, 1.6, 0));
     lamp.userData.levelLight = true;
-    mast.castShadow = true;
-    parent.add(mast, lamp);
+    parent.add(lamp);
   }
+
+  addInstancedMesh(parent, bankGeometry, bankMaterial, bankTransforms, {
+    castShadow: true,
+    receiveShadow: true,
+  });
+  for (let i = 0; i < barrierTransforms.length; i += 1) {
+    addInstancedMesh(parent, barrierGeometry, barrierMaterials[i], barrierTransforms[i], {
+      castShadow: true,
+      receiveShadow: true,
+    });
+  }
+  addInstancedMesh(parent, mastGeometry, mastMaterial, mastTransforms, { castShadow: true });
 }
 
 function createCar() {
@@ -788,6 +822,28 @@ function addMesh(parent, geometry, material, position = [0, 0, 0], rotation = [0
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(...position);
   mesh.rotation.set(...rotation);
+  parent.add(mesh);
+  return mesh;
+}
+
+function addInstancedMesh(parent, geometry, material, transforms, options = {}) {
+  if (transforms.length === 0) return null;
+
+  const mesh = new THREE.InstancedMesh(geometry, material, transforms.length);
+  const dummy = new THREE.Object3D();
+
+  for (let i = 0; i < transforms.length; i += 1) {
+    const transform = transforms[i];
+    dummy.position.set(...transform.position);
+    dummy.rotation.set(...(transform.rotation ?? [0, 0, 0]));
+    dummy.scale.set(...(transform.scale ?? [1, 1, 1]));
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+  }
+
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.castShadow = Boolean(options.castShadow);
+  mesh.receiveShadow = Boolean(options.receiveShadow);
   parent.add(mesh);
   return mesh;
 }
@@ -1500,9 +1556,8 @@ function quitGame() {
   if (window.opener) window.close();
 }
 
-function setShadows(enabled) {
-  graphicsSettings.shadows = enabled;
-  state.shadows = enabled;
+function setShadowQuality(value) {
+  graphicsSettings.shadowQuality = normalizeShadowQuality(value, getGraphicsProfile().defaultShadowQuality);
   saveGraphicsSettings();
   renderGraphicsSettings();
   applyGraphicsSettings();
@@ -1528,14 +1583,19 @@ function loadGraphicsSettings() {
         100,
       ),
       frameRateLimit: normalizeFrameRateLimit(saved.frameRateLimit, profile.defaultFrameRateLimit),
-      shadows: typeof saved.shadows === 'boolean' ? saved.shadows : profile.shadows,
+      shadowQuality: normalizeShadowQuality(
+        saved.shadowQuality,
+        typeof saved.shadows === 'boolean'
+          ? (saved.shadows ? profile.defaultShadowQuality : 'off')
+          : profile.defaultShadowQuality,
+      ),
     };
   } catch {
     return {
       preset: defaultPreset,
       resolutionScale: fallback.defaultResolutionScale,
       frameRateLimit: fallback.defaultFrameRateLimit,
-      shadows: fallback.shadows,
+      shadowQuality: fallback.defaultShadowQuality,
     };
   }
 }
@@ -1548,6 +1608,11 @@ function getGraphicsProfile() {
   return graphicsPresets[graphicsSettings.preset] ?? graphicsPresets.medium;
 }
 
+function getShadowQualitySettings() {
+  const quality = normalizeShadowQuality(graphicsSettings.shadowQuality, getGraphicsProfile().defaultShadowQuality);
+  return shadowQualities[quality];
+}
+
 function getTargetRenderHeight(scale) {
   return Math.round(THREE.MathUtils.lerp(240, 1080, THREE.MathUtils.clamp(scale, 0, 100) / 100));
 }
@@ -1555,6 +1620,10 @@ function getTargetRenderHeight(scale) {
 function normalizeFrameRateLimit(value, fallback) {
   const limit = Number(value);
   return [0, 30, 45, 60].includes(limit) ? limit : fallback;
+}
+
+function normalizeShadowQuality(value, fallback) {
+  return shadowQualities[value] ? value : fallback;
 }
 
 function getCurrentLevelFogDensity() {
@@ -1570,23 +1639,26 @@ function renderGraphicsSettings() {
     graphicsSettings.frameRateLimit,
     getGraphicsProfile().defaultFrameRateLimit,
   ));
-  shadowsToggle.checked = graphicsSettings.shadows;
-  shadowsToggle.disabled = !getGraphicsProfile().shadows;
+  shadowQualitySelect.value = normalizeShadowQuality(
+    graphicsSettings.shadowQuality,
+    getGraphicsProfile().defaultShadowQuality,
+  );
 }
 
 function applyGraphicsSettings() {
   const profile = getGraphicsProfile();
-  state.shadows = graphicsSettings.shadows && profile.shadows;
+  const shadowQuality = getShadowQualitySettings();
+  state.shadows = shadowQuality.enabled;
 
   renderer.setPixelRatio(getRenderPixelRatio());
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.shadowMap.enabled = state.shadows;
-  renderer.shadowMap.type = profile.shadowType;
+  renderer.shadowMap.type = shadowQuality.type;
   renderer.shadowMap.needsUpdate = true;
 
   if (keyLight) {
     keyLight.castShadow = state.shadows;
-    keyLight.shadow.mapSize.set(profile.shadowMapSize, profile.shadowMapSize);
+    keyLight.shadow.mapSize.set(shadowQuality.mapSize, shadowQuality.mapSize);
     keyLight.shadow.needsUpdate = true;
   }
 
