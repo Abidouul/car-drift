@@ -61,8 +61,9 @@ const shadowQualities = {
   },
   low: {
     enabled: true,
-    mapSize: 384,
-    type: THREE.BasicShadowMap,
+    mapSize: 256,
+    radius: 2,
+    type: THREE.PCFShadowMap,
   },
   off: {
     enabled: false,
@@ -107,7 +108,7 @@ const graphicsPresets = {
     label: 'Low',
     defaultResolutionScale: 28,
     defaultFrameRateLimit: 45,
-    defaultShadowQuality: 'off',
+    defaultShadowQuality: 'low',
     antialias: false,
     smokeParticles: 48,
     smokeTextureSize: 48,
@@ -1658,7 +1659,12 @@ function applyGraphicsSettings() {
 
   if (keyLight) {
     keyLight.castShadow = state.shadows;
+    if (keyLight.shadow.map && keyLight.shadow.mapSize.x !== shadowQuality.mapSize) {
+      keyLight.shadow.map.dispose();
+      keyLight.shadow.map = null;
+    }
     keyLight.shadow.mapSize.set(shadowQuality.mapSize, shadowQuality.mapSize);
+    keyLight.shadow.radius = shadowQuality.radius ?? 1;
     keyLight.shadow.needsUpdate = true;
   }
 
