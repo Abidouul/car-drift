@@ -6,10 +6,32 @@ Did like 2-4 prompts with Conductor and here are all the implementations that I 
 - Car was modeled and generated from scrach with GPT5.5 in High.
 - Physics are kinda heavy... Like a real car.
 - Game is playable directly in browser using this link "https://abidouul.github.io/car-drift/"
-- Gave the game a working Menu with working settings which you can: 
-  - Enable/Disable Shadows (still haven't poven if it helps with performance)
--...
--...
+- Gave the game a working Menu with working settings which you can:
+  - Enable/Disable shadows and tune shadow quality.
+  - Modify keybinds for car steering.
+  - Select graphics quality presets: High, Medium, Low, and Lowest.
+  - Adjust resolution scale from 240p to 1080p.
+  - Select shadow quality: High, Medium, Low, or Off.
+
+- Optimized the game to use less RAM and CPU.
+- Optimized the game to use more GPU power than RAM and CPU power.
+- Replaced real shadows with lighter fake/disabled shadow options on low settings.
+
+Implementations that I wish to do in the future:
+
+- Add Gameplay modes.
+- Gameplay Ameliorations.
+- Optimize more to make it smoothly run on a Celeron CPU.
+- Sound Effects.
+- Perfect the Car Model.
+- Create more Car Models.
+- Make a Car Selection Menu.
+- Change Car Physics and make it more realistically heavy.
+- Add More Environments with Multiple Maps.
+- ...
+
+Work can get taken and be customizable for now :)
+Just trying to make something that I like.
 
 ## Build note
 

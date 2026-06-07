@@ -26,7 +26,11 @@ const resultBestScoreEl = document.querySelector('#result-best-score');
 const resultRestartButton = document.querySelector('#result-restart');
 const resultLevelSelectButton = document.querySelector('#result-level-select');
 const resultMainMenuButton = document.querySelector('#result-main-menu');
-const shadowsToggle = document.querySelector('#shadows-toggle');
+const graphicsPresetSelect = document.querySelector('#graphics-preset');
+const resolutionScaleInput = document.querySelector('#resolution-scale');
+const resolutionValueEl = document.querySelector('#resolution-value');
+const frameRateLimitSelect = document.querySelector('#frame-rate-limit');
+const shadowQualitySelect = document.querySelector('#shadow-quality');
 const muteToggle = document.querySelector('#mute-toggle');
 const keybindButtons = [...document.querySelectorAll('[data-bind-action]')];
 const keybindStatusEl = document.querySelector('#keybind-status');
@@ -60,14 +64,95 @@ const defaultKeyBindings = {
 const smallMachine = (navigator.deviceMemory && navigator.deviceMemory <= 4)
   || navigator.hardwareConcurrency <= 4
   || window.matchMedia('(max-width: 640px)').matches;
-const quality = {
-  antialias: !smallMachine,
-  pixelRatioCap: smallMachine ? 1.2 : 1.6,
-  shadowMapSize: smallMachine ? 768 : 1024,
-  smokeParticles: smallMachine ? 120 : 180,
-  smokeTextureSize: smallMachine ? 64 : 96,
-  skidPoints: smallMachine ? 240 : 320,
+const graphicsStorageKey = 'driftDonut.graphics.v1';
+const shadowQualities = {
+  high: {
+    enabled: true,
+    mapSize: 1024,
+    type: THREE.PCFSoftShadowMap,
+  },
+  medium: {
+    enabled: true,
+    mapSize: 768,
+    type: THREE.PCFShadowMap,
+  },
+  low: {
+    enabled: true,
+    mapSize: 256,
+    radius: 2,
+    type: THREE.PCFShadowMap,
+  },
+  off: {
+    enabled: false,
+    mapSize: 128,
+    type: THREE.BasicShadowMap,
+  },
 };
+const graphicsPresets = {
+  high: {
+    defaultResolutionScale: 100,
+    defaultFrameRateLimit: 60,
+    defaultShadowQuality: 'high',
+    antialias: true,
+    smokeParticles: 180,
+    smokeTextureSize: 96,
+    skidPoints: 320,
+    smoke: true,
+    skid: true,
+    wheelBlur: true,
+    optionalLights: true,
+    levelLights: true,
+    fogDensityMultiplier: 1,
+  },
+  medium: {
+    defaultResolutionScale: smallMachine ? 52 : 70,
+    defaultFrameRateLimit: 60,
+    defaultShadowQuality: 'medium',
+    antialias: !smallMachine,
+    smokeParticles: 120,
+    smokeTextureSize: 64,
+    skidPoints: 240,
+    smoke: true,
+    skid: true,
+    wheelBlur: true,
+    optionalLights: true,
+    levelLights: false,
+    fogDensityMultiplier: 0.9,
+  },
+  low: {
+    defaultResolutionScale: 28,
+    defaultFrameRateLimit: 45,
+    defaultShadowQuality: 'low',
+    antialias: false,
+    smokeParticles: 48,
+    smokeTextureSize: 48,
+    skidPoints: 120,
+    smoke: true,
+    skid: true,
+    wheelBlur: false,
+    optionalLights: false,
+    levelLights: false,
+    fogDensityMultiplier: 0.6,
+  },
+  lowest: {
+    defaultResolutionScale: 0,
+    defaultFrameRateLimit: 30,
+    defaultShadowQuality: 'off',
+    antialias: false,
+    smokeParticles: 0,
+    smokeTextureSize: 32,
+    skidPoints: 2,
+    smoke: false,
+    skid: false,
+    wheelBlur: false,
+    optionalLights: false,
+    levelLights: false,
+    fogDensityMultiplier: 0,
+  },
+};
+let graphicsSettings = loadGraphicsSettings();
+let keyLight;
+let lastFrameAt = 0;
 const runConfig = {
   duration: 90,
   minSpeed: 2.8,
@@ -119,7 +204,8 @@ const state = {
   manual: false,
   screen: 'menu',
   level: 0,
-  shadows: true,
+  shadows: getShadowQualitySettings().enabled,
+  levelFogDensity: 0.022,
   muted: loadMutePreference(),
   cameraZoom: 1,
   cameraAngle: 0,
@@ -295,6 +381,8 @@ function initializeGame() {
   skidSystem = createSkidSystem();
   state.vehicle.contacts = createWheelContactData();
   levelSystem.setLevel(0);
+  renderGraphicsSettings();
+  applyGraphicsSettings();
 
   setupEventListeners();
   muteToggle.checked = state.muted;
@@ -304,15 +392,16 @@ function initializeGame() {
 }
 
 function createRenderer() {
+  const shadowQuality = getShadowQualitySettings();
   const webglRenderer = new THREE.WebGLRenderer({
-    antialias: quality.antialias,
+    antialias: getGraphicsProfile().antialias,
     canvas,
     powerPreference: 'high-performance',
   });
   webglRenderer.setPixelRatio(getRenderPixelRatio());
   webglRenderer.setSize(window.innerWidth, window.innerHeight);
-  webglRenderer.shadowMap.enabled = true;
-  webglRenderer.shadowMap.type = smallMachine ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  webglRenderer.shadowMap.enabled = shadowQuality.enabled;
+  webglRenderer.shadowMap.type = shadowQuality.type;
   webglRenderer.outputColorSpace = THREE.SRGBColorSpace;
   webglRenderer.toneMapping = THREE.ACESFilmicToneMapping;
   webglRenderer.toneMappingExposure = 1.1;
@@ -341,7 +430,7 @@ function showWebGLFallback(error) {
   menuOverlay.hidden = false;
   canvas.setAttribute('aria-hidden', 'true');
 
-  for (const control of document.querySelectorAll('button, input')) {
+  for (const control of document.querySelectorAll('button, input, select')) {
     control.disabled = true;
   }
 
@@ -431,8 +520,35 @@ function setupEventListeners() {
     });
   }
 
-  shadowsToggle.addEventListener('change', () => {
-    setShadows(shadowsToggle.checked);
+  graphicsPresetSelect.addEventListener('change', () => {
+    const preset = graphicsPresets[graphicsPresetSelect.value] ? graphicsPresetSelect.value : 'medium';
+    const profile = graphicsPresets[preset];
+    graphicsSettings = {
+      preset,
+      resolutionScale: profile.defaultResolutionScale,
+      frameRateLimit: profile.defaultFrameRateLimit,
+      shadowQuality: profile.defaultShadowQuality,
+    };
+    saveGraphicsSettings();
+    renderGraphicsSettings();
+    applyGraphicsSettings();
+  });
+
+  resolutionScaleInput.addEventListener('input', () => {
+    graphicsSettings.resolutionScale = Number(resolutionScaleInput.value);
+    saveGraphicsSettings();
+    renderGraphicsSettings();
+    applyGraphicsSettings();
+  });
+
+  frameRateLimitSelect.addEventListener('change', () => {
+    graphicsSettings.frameRateLimit = Number(frameRateLimitSelect.value);
+    saveGraphicsSettings();
+    renderGraphicsSettings();
+  });
+
+  shadowQualitySelect.addEventListener('change', () => {
+    setShadowQuality(shadowQualitySelect.value);
   });
 
   muteToggle.addEventListener('change', () => {
@@ -512,7 +628,7 @@ function setupLights() {
   const key = new THREE.DirectionalLight(0xfff0cd, 4.2);
   key.position.set(-10, 15, 8);
   key.castShadow = true;
-  key.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
+  key.shadow.mapSize.set(getShadowQualitySettings().mapSize, getShadowQualitySettings().mapSize);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 48;
   key.shadow.camera.left = -20;
@@ -520,13 +636,16 @@ function setupLights() {
   key.shadow.camera.top = 20;
   key.shadow.camera.bottom = -20;
   scene.add(key);
+  keyLight = key;
 
   const rim = new THREE.PointLight(0x91e5ff, 70, 32, 2.2);
   rim.position.set(8, 4, -9);
+  rim.userData.optionalLight = true;
   scene.add(rim);
 
   const warm = new THREE.PointLight(0xff7040, 22, 18, 2.4);
   warm.position.set(-6, 2.4, 8);
+  warm.userData.optionalLight = true;
   scene.add(warm);
 }
 
@@ -589,7 +708,8 @@ function createGround() {
       const { route, visual } = level;
       scene.background = new THREE.Color(visual.background);
       scene.fog.color.setHex(visual.fog);
-      scene.fog.density = visual.fogDensity;
+      state.levelFogDensity = visual.fogDensity;
+      scene.fog.density = getCurrentLevelFogDensity();
       ground.material.color.setHex(visual.ground);
       grid.material.color?.setHex(visual.gridMain);
       donutGuide.material.color.setHex(visual.guide);
@@ -606,7 +726,7 @@ function createGround() {
       disposeObjectTree(levelDecor);
       levelDecor.clear();
       level.props(levelDecor);
-      applyShadowSetting();
+      applyGraphicsSettings();
     },
   };
 }
@@ -654,6 +774,7 @@ function createDockyardProps(parent) {
     const angle = (i / 6) * Math.PI * 2 + 0.35;
     pole.position.set(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
     lamp.position.copy(pole.position).add(new THREE.Vector3(0, 2.1, 0));
+    lamp.userData.levelLight = true;
     pole.castShadow = true;
     parent.add(pole, lamp);
   }
@@ -702,6 +823,7 @@ function createFrostTerminalProps(parent) {
     const angle = (i / 7) * Math.PI * 2;
     mast.position.set(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
     lamp.position.copy(mast.position).add(new THREE.Vector3(0, 1.6, 0));
+    lamp.userData.levelLight = true;
     mast.castShadow = true;
     parent.add(mast, lamp);
   }
@@ -1003,7 +1125,7 @@ function createWheelModel(spin, steering, side, tireMaterial, rimMaterial, brake
 
 function createSmokeSystem() {
   const particles = [];
-  const texture = makeSmokeTexture(quality.smokeTextureSize);
+  let texture = makeSmokeTexture(getGraphicsProfile().smokeTextureSize);
   const baseMaterial = new THREE.SpriteMaterial({
     map: texture,
     color: 0xd7d8cf,
@@ -1015,21 +1137,50 @@ function createSmokeSystem() {
   const group = new THREE.Group();
   world.add(group);
 
-  for (let i = 0; i < quality.smokeParticles; i += 1) {
+  function createParticle() {
     const sprite = new THREE.Sprite(baseMaterial.clone());
     sprite.visible = false;
     group.add(sprite);
-    particles.push({
+    return {
       age: 99,
       life: 1,
       sprite,
       velocity: new THREE.Vector3(),
       startScale: 0.4,
       endScale: 1.4,
-    });
+    };
   }
 
+  function setTextureSize(size) {
+    if (texture.image?.width === size) return;
+
+    const previousTexture = texture;
+    texture = makeSmokeTexture(size);
+    for (const particle of particles) {
+      particle.sprite.material.map = texture;
+      particle.sprite.material.needsUpdate = true;
+    }
+    previousTexture.dispose();
+  }
+
+  function setBudget(count, textureSize) {
+    setTextureSize(textureSize);
+
+    while (particles.length < count) {
+      particles.push(createParticle());
+    }
+
+    while (particles.length > count) {
+      const particle = particles.pop();
+      group.remove(particle.sprite);
+      particle.sprite.material.dispose();
+    }
+  }
+
+  setBudget(getGraphicsProfile().smokeParticles, getGraphicsProfile().smokeTextureSize);
+
   return {
+    setBudget,
     clear() {
       for (const particle of particles) {
         particle.age = particle.life;
@@ -1038,6 +1189,8 @@ function createSmokeSystem() {
       }
     },
     emit(origin, tireVelocity, sideVector, slip) {
+      if (!getGraphicsProfile().smoke || particles.length === 0) return;
+
       const particle = particles.find((item) => item.age >= item.life);
       if (!particle) return;
 
@@ -1105,10 +1258,14 @@ function createSkidSystem() {
       createTrailMesh(group, 0x050505),
       createTrailMesh(group, 0x050505),
     ],
+    setBudget(points) {
+      for (const trail of this.trails) trail.setBudget(points);
+    },
     clear() {
       for (const trail of this.trails) trail.clear();
     },
     add(index, point, slip) {
+      if (!getGraphicsProfile().skid) return;
       this.trails[index].add(point, THREE.MathUtils.clamp(slip, 0, 1));
     },
     update() {
@@ -1118,17 +1275,15 @@ function createSkidSystem() {
 }
 
 function createTrailMesh(parent, color) {
-  const maxPoints = quality.skidPoints;
-  const width = 0.23;
-  const points = Array.from({ length: maxPoints }, () => ({
-    position: new THREE.Vector3(),
-    strength: 0,
-  }));
+  let maxPoints = 0;
+  let points = [];
   let pointCount = 0;
+  let positions;
+  let colors;
+  let positionAttribute;
+  let colorAttribute;
+  const width = 0.23;
   const geometry = new THREE.BufferGeometry();
-  const positions = new Float32Array(maxPoints * 2 * 3);
-  const colors = new Float32Array(maxPoints * 2 * 3);
-  const indices = new Uint16Array((maxPoints - 1) * 6);
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
@@ -1137,31 +1292,54 @@ function createTrailMesh(parent, color) {
     side: THREE.DoubleSide,
     vertexColors: true,
   });
-
-  for (let i = 0; i < maxPoints - 1; i += 1) {
-    const vertex = i * 2;
-    const index = i * 6;
-    indices[index] = vertex;
-    indices[index + 1] = vertex + 1;
-    indices[index + 2] = vertex + 2;
-    indices[index + 3] = vertex + 1;
-    indices[index + 4] = vertex + 3;
-    indices[index + 5] = vertex + 2;
-  }
-
-  const positionAttribute = new THREE.BufferAttribute(positions, 3);
-  const colorAttribute = new THREE.BufferAttribute(colors, 3);
-  positionAttribute.setUsage(THREE.DynamicDrawUsage);
-  colorAttribute.setUsage(THREE.DynamicDrawUsage);
-  geometry.setAttribute('position', positionAttribute);
-  geometry.setAttribute('color', colorAttribute);
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.setDrawRange(0, 0);
-  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 64);
-
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = 1;
   parent.add(mesh);
+
+  function configure(pointsLimit) {
+    const nextMaxPoints = Math.max(2, pointsLimit);
+    if (nextMaxPoints === maxPoints) return;
+
+    const previous = points.slice(Math.max(0, pointCount - nextMaxPoints), pointCount);
+    maxPoints = nextMaxPoints;
+    points = Array.from({ length: maxPoints }, () => ({
+      position: new THREE.Vector3(),
+      strength: 0,
+    }));
+    pointCount = Math.min(previous.length, maxPoints);
+
+    for (let i = 0; i < pointCount; i += 1) {
+      points[i].position.copy(previous[i].position);
+      points[i].strength = previous[i].strength;
+    }
+
+    positions = new Float32Array(maxPoints * 2 * 3);
+    colors = new Float32Array(maxPoints * 2 * 3);
+    const indices = new Uint16Array((maxPoints - 1) * 6);
+
+    for (let i = 0; i < maxPoints - 1; i += 1) {
+      const vertex = i * 2;
+      const index = i * 6;
+      indices[index] = vertex;
+      indices[index + 1] = vertex + 1;
+      indices[index + 2] = vertex + 2;
+      indices[index + 3] = vertex + 1;
+      indices[index + 4] = vertex + 3;
+      indices[index + 5] = vertex + 2;
+    }
+
+    positionAttribute = new THREE.BufferAttribute(positions, 3);
+    colorAttribute = new THREE.BufferAttribute(colors, 3);
+    positionAttribute.setUsage(THREE.DynamicDrawUsage);
+    colorAttribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('position', positionAttribute);
+    geometry.setAttribute('color', colorAttribute);
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    geometry.setDrawRange(0, Math.max(0, pointCount - 1) * 6);
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 64);
+  }
+
+  configure(getGraphicsProfile().skidPoints);
 
   function pushPoint(x, y, z, strength) {
     if (pointCount === maxPoints) {
@@ -1178,6 +1356,9 @@ function createTrailMesh(parent, color) {
   }
 
   return {
+    setBudget(pointsLimit) {
+      configure(pointsLimit);
+    },
     clear() {
       pointCount = 0;
       geometry.setDrawRange(0, 0);
@@ -1261,8 +1442,12 @@ function createTrailMesh(parent, color) {
   };
 }
 
-function animate() {
+function animate(now = 0) {
   requestAnimationFrame(animate);
+
+  const frameInterval = getFrameInterval();
+  if (frameInterval > 0 && lastFrameAt > 0 && now - lastFrameAt < frameInterval) return;
+  lastFrameAt = now;
 
   const rawDelta = clock.getDelta();
   const delta = Math.min(rawDelta, 0.033);
@@ -1393,15 +1578,16 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
   car.sprung.position.y = 0.03 + vehicle.rearSlip * 0.035 + Math.sin(state.elapsed * 18) * vehicle.rearSlip * 0.012;
 
   for (const wheel of car.wheels) {
+    const showWheelBlur = getGraphicsProfile().wheelBlur;
     if (wheel.front) {
       wheel.steering.rotation.y = -vehicle.steer;
       wheel.spin.rotation.x = vehicle.wheelSpinFront;
-      wheel.blur.visible = speed > 3.5;
+      wheel.blur.visible = showWheelBlur && speed > 3.5;
       wheel.blur.material.opacity = 0.09 + vehicle.frontSlip * 0.09;
     } else {
       wheel.steering.rotation.y = 0;
       wheel.spin.rotation.x = vehicle.wheelSpinRear;
-      wheel.blur.visible = vehicle.rearSlip > 0.25;
+      wheel.blur.visible = showWheelBlur && vehicle.rearSlip > 0.25;
       wheel.blur.material.opacity = 0.18 + vehicle.rearSlip * 0.18;
     }
   }
@@ -1915,15 +2101,135 @@ function createNoiseBuffer(context) {
   return buffer;
 }
 
-function setShadows(enabled) {
-  state.shadows = enabled;
-  shadowsToggle.checked = enabled;
-  applyShadowSetting();
+function setShadowQuality(value) {
+  graphicsSettings.shadowQuality = normalizeShadowQuality(value, getGraphicsProfile().defaultShadowQuality);
+  saveGraphicsSettings();
+  renderGraphicsSettings();
+  applyGraphicsSettings();
 }
 
 function applyShadowSetting() {
+  applyGraphicsSettings();
+}
+
+function loadGraphicsSettings() {
+  const defaultPreset = smallMachine ? 'lowest' : 'medium';
+  const fallback = graphicsPresets[defaultPreset];
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(graphicsStorageKey) || '{}');
+    const preset = graphicsPresets[saved.preset] ? saved.preset : defaultPreset;
+    const profile = graphicsPresets[preset];
+    return {
+      preset,
+      resolutionScale: THREE.MathUtils.clamp(
+        Number.isFinite(saved.resolutionScale) ? saved.resolutionScale : profile.defaultResolutionScale,
+        0,
+        100,
+      ),
+      frameRateLimit: normalizeFrameRateLimit(saved.frameRateLimit, profile.defaultFrameRateLimit),
+      shadowQuality: normalizeShadowQuality(
+        saved.shadowQuality,
+        typeof saved.shadows === 'boolean'
+          ? (saved.shadows ? profile.defaultShadowQuality : 'off')
+          : profile.defaultShadowQuality,
+      ),
+    };
+  } catch {
+    return {
+      preset: defaultPreset,
+      resolutionScale: fallback.defaultResolutionScale,
+      frameRateLimit: fallback.defaultFrameRateLimit,
+      shadowQuality: fallback.defaultShadowQuality,
+    };
+  }
+}
+
+function saveGraphicsSettings() {
+  try {
+    localStorage.setItem(graphicsStorageKey, JSON.stringify(graphicsSettings));
+  } catch {
+    // Graphics settings remain active for the current session when storage is blocked.
+  }
+}
+
+function getGraphicsProfile() {
+  return graphicsPresets[graphicsSettings.preset] ?? graphicsPresets.medium;
+}
+
+function getShadowQualitySettings() {
+  const quality = normalizeShadowQuality(graphicsSettings.shadowQuality, getGraphicsProfile().defaultShadowQuality);
+  return shadowQualities[quality];
+}
+
+function getTargetRenderHeight(scale) {
+  return Math.round(THREE.MathUtils.lerp(240, 1080, THREE.MathUtils.clamp(scale, 0, 100) / 100));
+}
+
+function normalizeFrameRateLimit(value, fallback) {
+  const limit = Number(value);
+  return [0, 30, 45, 60].includes(limit) ? limit : fallback;
+}
+
+function normalizeShadowQuality(value, fallback) {
+  return shadowQualities[value] ? value : fallback;
+}
+
+function getCurrentLevelFogDensity() {
+  return state.levelFogDensity * getGraphicsProfile().fogDensityMultiplier;
+}
+
+function renderGraphicsSettings() {
+  const targetHeight = getTargetRenderHeight(graphicsSettings.resolutionScale);
+  graphicsPresetSelect.value = graphicsSettings.preset;
+  resolutionScaleInput.value = String(Math.round(graphicsSettings.resolutionScale));
+  resolutionValueEl.textContent = `${targetHeight}p`;
+  frameRateLimitSelect.value = String(normalizeFrameRateLimit(
+    graphicsSettings.frameRateLimit,
+    getGraphicsProfile().defaultFrameRateLimit,
+  ));
+  shadowQualitySelect.value = normalizeShadowQuality(
+    graphicsSettings.shadowQuality,
+    getGraphicsProfile().defaultShadowQuality,
+  );
+}
+
+function applyGraphicsSettings() {
+  const profile = getGraphicsProfile();
+  const shadowQuality = getShadowQualitySettings();
+  state.shadows = shadowQuality.enabled;
+
+  renderer.setPixelRatio(getRenderPixelRatio());
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.shadowMap.enabled = state.shadows;
+  renderer.shadowMap.type = shadowQuality.type;
   renderer.shadowMap.needsUpdate = true;
+
+  if (keyLight) {
+    keyLight.castShadow = state.shadows;
+    if (keyLight.shadow.map && keyLight.shadow.mapSize.x !== shadowQuality.mapSize) {
+      keyLight.shadow.map.dispose();
+      keyLight.shadow.map = null;
+    }
+    keyLight.shadow.mapSize.set(shadowQuality.mapSize, shadowQuality.mapSize);
+    keyLight.shadow.radius = shadowQuality.radius ?? 1;
+    keyLight.shadow.needsUpdate = true;
+  }
+
+  scene.fog.density = getCurrentLevelFogDensity();
+  smokeSystem.setBudget(profile.smokeParticles, profile.smokeTextureSize);
+  skidSystem.setBudget(profile.skidPoints);
+
+  scene.traverse((child) => {
+    if (child.userData.optionalLight) child.visible = profile.optionalLights;
+    if (child.userData.levelLight) child.visible = profile.levelLights;
+    if (child.isMesh) {
+      if (child.userData.baseCastShadow === undefined) child.userData.baseCastShadow = child.castShadow;
+      if (child.userData.baseReceiveShadow === undefined) child.userData.baseReceiveShadow = child.receiveShadow;
+      child.castShadow = state.shadows && child.userData.baseCastShadow;
+      child.receiveShadow = state.shadows && child.userData.baseReceiveShadow;
+    }
+  });
 }
 
 function updateStatusText() {
@@ -2325,8 +2631,8 @@ function onResize() {
   camera.aspect = width / height;
   camera.fov = getResponsiveFov();
   camera.updateProjectionMatrix();
-  renderer.setSize(width, height);
   renderer.setPixelRatio(getRenderPixelRatio());
+  renderer.setSize(width, height);
 }
 
 function getResponsiveFov() {
@@ -2334,5 +2640,12 @@ function getResponsiveFov() {
 }
 
 function getRenderPixelRatio() {
-  return Math.min(window.devicePixelRatio || 1, quality.pixelRatioCap);
+  const targetHeight = getTargetRenderHeight(graphicsSettings.resolutionScale);
+  const targetRatio = targetHeight / Math.max(1, window.innerHeight);
+  return THREE.MathUtils.clamp(targetRatio, 0.22, 4);
+}
+
+function getFrameInterval() {
+  const limit = normalizeFrameRateLimit(graphicsSettings.frameRateLimit, getGraphicsProfile().defaultFrameRateLimit);
+  return limit > 0 ? 1000 / limit : 0;
 }
