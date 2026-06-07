@@ -4,9 +4,16 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 const canvas = document.querySelector('#scene');
 const hud = document.querySelector('.hud');
+const driftFeedbackEl = document.querySelector('.drift-feedback');
+const scorePopupsEl = document.querySelector('.score-popups');
+const scoreEl = document.querySelector('#score');
+const comboEl = document.querySelector('#combo');
+const timerEl = document.querySelector('#timer');
+const bestScoreEl = document.querySelector('#best-score');
 const speedEl = document.querySelector('#speed');
 const angleEl = document.querySelector('#angle');
 const statusEl = document.querySelector('#status');
+const restartButton = document.querySelector('#restart-button');
 const modeToggle = document.querySelector('#mode-toggle');
 const cameraZoom = document.querySelector('#camera-zoom');
 const cameraAngle = document.querySelector('#camera-angle');
@@ -14,19 +21,27 @@ const menuOverlay = document.querySelector('.menu-overlay');
 const playButton = document.querySelector('#play-button');
 const optionsButton = document.querySelector('#options-button');
 const quitButton = document.querySelector('#quit-button');
-const shadowQualitySelect = document.querySelector('#shadow-quality');
-const keybindButtons = [...document.querySelectorAll('[data-bind-action]')];
-const keybindStatusEl = document.querySelector('#keybind-status');
-const resetBindingsButton = document.querySelector('#reset-bindings');
+const resultScoreEl = document.querySelector('#result-score');
+const resultBestScoreEl = document.querySelector('#result-best-score');
+const resultRestartButton = document.querySelector('#result-restart');
+const resultLevelSelectButton = document.querySelector('#result-level-select');
+const resultMainMenuButton = document.querySelector('#result-main-menu');
 const graphicsPresetSelect = document.querySelector('#graphics-preset');
 const resolutionScaleInput = document.querySelector('#resolution-scale');
 const resolutionValueEl = document.querySelector('#resolution-value');
 const frameRateLimitSelect = document.querySelector('#frame-rate-limit');
+const shadowQualitySelect = document.querySelector('#shadow-quality');
+const muteToggle = document.querySelector('#mute-toggle');
+const keybindButtons = [...document.querySelectorAll('[data-bind-action]')];
+const keybindStatusEl = document.querySelector('#keybind-status');
+const resetBindingsButton = document.querySelector('#reset-bindings');
 const panels = {
   main: document.querySelector('[data-panel="main"]'),
   levels: document.querySelector('[data-panel="levels"]'),
   options: document.querySelector('[data-panel="options"]'),
   quit: document.querySelector('[data-panel="quit"]'),
+  result: document.querySelector('[data-panel="result"]'),
+  webgl: document.querySelector('[data-panel="webgl"]'),
 };
 
 const movementActions = ['up', 'left', 'right', 'down'];
@@ -37,6 +52,8 @@ const actionLabels = {
   down: 'Reverse',
 };
 const keyBindingStorageKey = 'driftDonut.keyBindings.v1';
+const bestScoreStorageKey = 'driftDonut.bestScore.v1';
+const muteStorageKey = 'driftDonut.muted.v1';
 const defaultKeyBindings = {
   up: { key: 'z', code: 'KeyW', label: 'Z' },
   left: { key: 'q', code: 'KeyA', label: 'Q' },
@@ -73,7 +90,6 @@ const shadowQualities = {
 };
 const graphicsPresets = {
   high: {
-    label: 'High',
     defaultResolutionScale: 100,
     defaultFrameRateLimit: 60,
     defaultShadowQuality: 'high',
@@ -89,7 +105,6 @@ const graphicsPresets = {
     fogDensityMultiplier: 1,
   },
   medium: {
-    label: 'Medium',
     defaultResolutionScale: smallMachine ? 52 : 70,
     defaultFrameRateLimit: 60,
     defaultShadowQuality: 'medium',
@@ -105,7 +120,6 @@ const graphicsPresets = {
     fogDensityMultiplier: 0.9,
   },
   low: {
-    label: 'Low',
     defaultResolutionScale: 28,
     defaultFrameRateLimit: 45,
     defaultShadowQuality: 'low',
@@ -121,7 +135,6 @@ const graphicsPresets = {
     fogDensityMultiplier: 0.6,
   },
   lowest: {
-    label: 'Lowest',
     defaultResolutionScale: 0,
     defaultFrameRateLimit: 30,
     defaultShadowQuality: 'off',
@@ -140,30 +153,50 @@ const graphicsPresets = {
 let graphicsSettings = loadGraphicsSettings();
 let keyLight;
 let lastFrameAt = 0;
+const runConfig = {
+  duration: 90,
+  minSpeed: 2.8,
+  angleDisplaySpeed: 2.2,
+  minAngle: THREE.MathUtils.degToRad(12),
+  idealAngle: THREE.MathUtils.degToRad(46),
+  maxAngle: THREE.MathUtils.degToRad(78),
+  minRearSlip: 0.32,
+  breakGrace: 0.45,
+  basePointsPerSecond: 55,
+  sustainRamp: 1.5,
+  comboGain: 0.42,
+  comboDecay: 1.8,
+  comboSoftDecay: 0.35,
+  maxCombo: 5,
+};
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x07090a);
-scene.fog = new THREE.FogExp2(0x07090a, 0.022);
+const manualTuning = {
+  steerLimitLowSpeed: 0.9,
+  steerLimitHighSpeed: 0.54,
+  steerFalloffSpeed: 9.8,
+  throttleReverseScale: 0.58,
+  brakingSpeedThreshold: 0.45,
+  brakeForce: 9.2,
+  linearDrag: 0.38,
+  maxSpeed: 9.5,
+  yawDamping: 0.34,
+  steerResponse: 0.00065,
+  launchAssistDuration: 10,
+  launchDriveForceScale: 1.14,
+  launchSteerScale: 1.08,
+  launchYawDampingScale: 1.15,
+};
 
-const camera = new THREE.PerspectiveCamera(getResponsiveFov(), window.innerWidth / window.innerHeight, 0.1, 180);
-camera.position.set(-9, 7, 12);
-
-const renderer = new THREE.WebGLRenderer({
-  antialias: getGraphicsProfile().antialias,
-  canvas,
-  powerPreference: 'high-performance',
-});
-renderer.setPixelRatio(getRenderPixelRatio());
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = getShadowQualitySettings().enabled;
-renderer.shadowMap.type = getShadowQualitySettings().type;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
-
-const clock = new THREE.Clock();
-const world = new THREE.Group();
-scene.add(world);
+let scene;
+let camera;
+let renderer;
+let clock;
+let world;
+let levelSystem;
+let car;
+let smokeSystem;
+let skidSystem;
+let audioEngine;
 
 const state = {
   elapsed: 0,
@@ -173,17 +206,38 @@ const state = {
   level: 0,
   shadows: getShadowQualitySettings().enabled,
   levelFogDensity: 0.022,
+  muted: loadMutePreference(),
   cameraZoom: 1,
   cameraAngle: 0,
   cameraHeight: 1,
   bindingTarget: null,
   keyBindings: loadKeyBindings(),
+  run: {
+    duration: runConfig.duration,
+    timeLeft: runConfig.duration,
+    score: 0,
+    bestScore: loadBestScore(),
+    combo: 1,
+    driftDuration: 0,
+    invalidTime: 0,
+    driftValid: false,
+    pointsPerSecond: 0,
+    ended: false,
+  },
   pointer: {
     active: false,
     lastX: 0,
     lastY: 0,
   },
   smokeAccumulator: 0,
+  feedback: {
+    driftIntensity: 0,
+    shake: 0,
+    popupBank: 0,
+    popupCooldown: 0,
+    comboPulse: 0,
+    lastComboStep: 1,
+  },
   input: {
     up: false,
     down: false,
@@ -222,182 +276,350 @@ const sim = {
   rearCornering: 4.8,
 };
 
-setupLights();
-const levelSystem = createGround();
-const car = createCar();
-world.add(car.root);
-const smokeSystem = createSmokeSystem();
-const skidSystem = createSkidSystem();
-state.vehicle.contacts = createWheelContactData();
-levelSystem.setLevel(0);
-renderGraphicsSettings();
-applyGraphicsSettings();
+const levelConfigs = [
+  {
+    name: 'Dockyard Ring',
+    route: {
+      targetRadius: 5.45,
+      targetSpeed: 5.95,
+      driftAngle: THREE.MathUtils.degToRad(61),
+      guideWidth: 0.1,
+    },
+    handling: {
+      driveForceScale: 1,
+      frontGripScale: 1,
+      rearGripScale: 1,
+      frontCorneringScale: 1,
+      rearCorneringScale: 1,
+      rearPowerGrip: 1.65,
+      yawDampingScale: 1,
+      dragScale: 1,
+      maxSpeedScale: 1,
+      steerScale: 1,
+    },
+    scoring: {
+      driftRewardMultiplier: 1,
+    },
+    visual: {
+      background: 0x07090a,
+      fog: 0x07090a,
+      fogDensity: 0.022,
+      ground: 0x20261f,
+      gridMain: 0x5d6c62,
+      guide: 0xb9c6a9,
+      center: 0xffdf70,
+    },
+    props: createDockyardProps,
+  },
+  {
+    name: 'Frost Terminal',
+    route: {
+      targetRadius: 5.15,
+      targetSpeed: 5.65,
+      driftAngle: THREE.MathUtils.degToRad(66),
+      guideWidth: 0.14,
+    },
+    handling: {
+      driveForceScale: 0.96,
+      frontGripScale: 0.92,
+      rearGripScale: 0.72,
+      frontCorneringScale: 0.92,
+      rearCorneringScale: 0.78,
+      rearPowerGrip: 1.25,
+      yawDampingScale: 0.84,
+      dragScale: 0.86,
+      maxSpeedScale: 0.95,
+      steerScale: 0.94,
+    },
+    scoring: {
+      driftRewardMultiplier: 1.25,
+    },
+    visual: {
+      background: 0x071018,
+      fog: 0x071018,
+      fogDensity: 0.032,
+      ground: 0x27343a,
+      gridMain: 0x7ea8b4,
+      guide: 0xa9d9ee,
+      center: 0x9fe7ff,
+    },
+    props: createFrostTerminalProps,
+  },
+];
 
-canvas.addEventListener('pointerdown', (event) => {
-  if (state.screen !== 'playing') return;
-  state.pointer.active = true;
-  state.pointer.lastX = event.clientX;
-  state.pointer.lastY = event.clientY;
-  canvas.setPointerCapture(event.pointerId);
-});
+initializeGame();
 
-canvas.addEventListener('pointermove', (event) => {
-  if (!state.pointer.active) return;
-
-  const deltaX = event.clientX - state.pointer.lastX;
-  const deltaY = event.clientY - state.pointer.lastY;
-  state.pointer.lastX = event.clientX;
-  state.pointer.lastY = event.clientY;
-
-  state.cameraAngle = normalizeCameraAngle(state.cameraAngle - deltaX * 0.008);
-  state.cameraHeight = THREE.MathUtils.clamp(state.cameraHeight - deltaY * 0.006, 0.45, 1.9);
-  cameraAngle.value = String(Math.round(THREE.MathUtils.radToDeg(state.cameraAngle)));
-});
-
-canvas.addEventListener('pointerup', (event) => {
-  state.pointer.active = false;
-  canvas.releasePointerCapture(event.pointerId);
-});
-
-canvas.addEventListener('pointercancel', () => {
-  state.pointer.active = false;
-});
-
-canvas.addEventListener('wheel', (event) => {
-  if (state.screen !== 'playing') return;
-  event.preventDefault();
-  state.cameraZoom = THREE.MathUtils.clamp(state.cameraZoom + event.deltaY * 0.001, 0.65, 1.65);
-  cameraZoom.value = state.cameraZoom.toFixed(2);
-}, { passive: false });
-
-playButton.addEventListener('click', () => {
-  if (state.screen === 'paused') {
-    resumeGame();
+function initializeGame() {
+  if (!hasWebGLSupport()) {
+    showWebGLFallback();
     return;
   }
 
-  showMenuPanel('levels');
-});
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x07090a);
+  scene.fog = new THREE.FogExp2(0x07090a, 0.022);
 
-optionsButton.addEventListener('click', () => {
-  showMenuPanel('options');
-});
+  camera = new THREE.PerspectiveCamera(getResponsiveFov(), window.innerWidth / window.innerHeight, 0.1, 180);
+  camera.position.set(-9, 7, 12);
 
-quitButton.addEventListener('click', () => {
-  quitGame();
-});
+  try {
+    renderer = createRenderer();
+  } catch (error) {
+    showWebGLFallback(error);
+    return;
+  }
 
-for (const button of document.querySelectorAll('[data-level]')) {
-  button.addEventListener('click', () => {
-    startLevel(Number(button.dataset.level));
-  });
+  clock = new THREE.Clock();
+  world = new THREE.Group();
+  scene.add(world);
+
+  setupLights();
+  levelSystem = createGround();
+  car = createCar();
+  world.add(car.root);
+  smokeSystem = createSmokeSystem();
+  skidSystem = createSkidSystem();
+  state.vehicle.contacts = createWheelContactData();
+  levelSystem.setLevel(0);
+  renderGraphicsSettings();
+  applyGraphicsSettings();
+
+  setupEventListeners();
+  muteToggle.checked = state.muted;
+  renderKeyBindings();
+  showMainMenu();
+  animate();
 }
 
-for (const button of document.querySelectorAll('[data-back-menu]')) {
-  button.addEventListener('click', () => {
-    if (state.screen === 'paused') {
-      showPauseMenu();
+function createRenderer() {
+  const shadowQuality = getShadowQualitySettings();
+  const webglRenderer = new THREE.WebGLRenderer({
+    antialias: getGraphicsProfile().antialias,
+    canvas,
+    powerPreference: 'high-performance',
+  });
+  webglRenderer.setPixelRatio(getRenderPixelRatio());
+  webglRenderer.setSize(window.innerWidth, window.innerHeight);
+  webglRenderer.shadowMap.enabled = shadowQuality.enabled;
+  webglRenderer.shadowMap.type = shadowQuality.type;
+  webglRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  webglRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  webglRenderer.toneMappingExposure = 1.1;
+  return webglRenderer;
+}
+
+function hasWebGLSupport() {
+  if (new URLSearchParams(window.location.search).has('force-no-webgl')) return false;
+  if (!window.WebGLRenderingContext) return false;
+
+  const probeCanvas = document.createElement('canvas');
+  try {
+    return Boolean(
+      probeCanvas.getContext('webgl2')
+        || probeCanvas.getContext('webgl')
+        || probeCanvas.getContext('experimental-webgl'),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function showWebGLFallback(error) {
+  document.body.classList.add('webgl-unavailable');
+  hud.hidden = true;
+  menuOverlay.hidden = false;
+  canvas.setAttribute('aria-hidden', 'true');
+
+  for (const control of document.querySelectorAll('button, input, select')) {
+    control.disabled = true;
+  }
+
+  showMenuPanel('webgl');
+
+  if (error) {
+    console.warn('WebGL renderer initialization failed.', error);
+  }
+}
+
+function setupEventListeners() {
+  canvas.addEventListener('pointerdown', (event) => {
+    if (state.screen !== 'playing') return;
+    unlockAudio();
+    state.pointer.active = true;
+    state.pointer.lastX = event.clientX;
+    state.pointer.lastY = event.clientY;
+    canvas.setPointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (event) => {
+    if (!state.pointer.active) return;
+
+    const deltaX = event.clientX - state.pointer.lastX;
+    const deltaY = event.clientY - state.pointer.lastY;
+    state.pointer.lastX = event.clientX;
+    state.pointer.lastY = event.clientY;
+
+    state.cameraAngle = normalizeCameraAngle(state.cameraAngle - deltaX * 0.008);
+    state.cameraHeight = THREE.MathUtils.clamp(state.cameraHeight - deltaY * 0.006, 0.45, 1.9);
+    cameraAngle.value = String(Math.round(THREE.MathUtils.radToDeg(state.cameraAngle)));
+  });
+
+  canvas.addEventListener('pointerup', (event) => {
+    state.pointer.active = false;
+    canvas.releasePointerCapture(event.pointerId);
+  });
+
+  canvas.addEventListener('pointercancel', () => {
+    state.pointer.active = false;
+  });
+
+  canvas.addEventListener('wheel', (event) => {
+    if (state.screen !== 'playing') return;
+    event.preventDefault();
+    state.cameraZoom = THREE.MathUtils.clamp(state.cameraZoom + event.deltaY * 0.001, 0.65, 1.65);
+    cameraZoom.value = state.cameraZoom.toFixed(2);
+  }, { passive: false });
+
+  playButton.addEventListener('click', () => {
+    showMenuPanel('levels');
+  });
+
+  optionsButton.addEventListener('click', () => {
+    showMenuPanel('options');
+  });
+
+  quitButton.addEventListener('click', () => {
+    quitGame();
+  });
+
+  restartButton.addEventListener('click', () => {
+    restartCurrentRun();
+  });
+
+  resultRestartButton.addEventListener('click', () => {
+    restartCurrentRun();
+  });
+
+  resultLevelSelectButton.addEventListener('click', () => {
+    showLevelSelect();
+  });
+
+  resultMainMenuButton.addEventListener('click', () => {
+    showMainMenu();
+  });
+
+  for (const button of document.querySelectorAll('[data-level]')) {
+    button.addEventListener('click', () => {
+      startLevel(Number(button.dataset.level));
+    });
+  }
+
+  for (const button of document.querySelectorAll('[data-back-menu]')) {
+    button.addEventListener('click', () => {
+      showMainMenu();
+    });
+  }
+
+  graphicsPresetSelect.addEventListener('change', () => {
+    const preset = graphicsPresets[graphicsPresetSelect.value] ? graphicsPresetSelect.value : 'medium';
+    const profile = graphicsPresets[preset];
+    graphicsSettings = {
+      preset,
+      resolutionScale: profile.defaultResolutionScale,
+      frameRateLimit: profile.defaultFrameRateLimit,
+      shadowQuality: profile.defaultShadowQuality,
+    };
+    saveGraphicsSettings();
+    renderGraphicsSettings();
+    applyGraphicsSettings();
+  });
+
+  resolutionScaleInput.addEventListener('input', () => {
+    graphicsSettings.resolutionScale = Number(resolutionScaleInput.value);
+    saveGraphicsSettings();
+    renderGraphicsSettings();
+    applyGraphicsSettings();
+  });
+
+  frameRateLimitSelect.addEventListener('change', () => {
+    graphicsSettings.frameRateLimit = Number(frameRateLimitSelect.value);
+    saveGraphicsSettings();
+    renderGraphicsSettings();
+  });
+
+  shadowQualitySelect.addEventListener('change', () => {
+    setShadowQuality(shadowQualitySelect.value);
+  });
+
+  muteToggle.addEventListener('change', () => {
+    setMuted(muteToggle.checked);
+  });
+
+  for (const button of keybindButtons) {
+    button.addEventListener('click', () => {
+      startKeyBinding(button.dataset.bindAction);
+    });
+  }
+
+  resetBindingsButton.addEventListener('click', () => {
+    state.bindingTarget = null;
+    state.keyBindings = cloneDefaultKeyBindings();
+    saveKeyBindings();
+    clearMovementInput();
+    renderKeyBindings('Controls reset');
+  });
+
+  modeToggle.addEventListener('click', () => {
+    unlockAudio();
+    state.manual = !state.manual;
+    modeToggle.textContent = state.manual ? 'Play auto' : 'Play manual';
+    resetVehicle(state.manual);
+    state.run.driftDuration = 0;
+    state.run.invalidTime = runConfig.breakGrace;
+    state.run.driftValid = false;
+    updateStatusText();
+  });
+
+  cameraZoom.addEventListener('input', () => {
+    state.cameraZoom = Number(cameraZoom.value);
+  });
+
+  cameraAngle.addEventListener('input', () => {
+    state.cameraAngle = THREE.MathUtils.degToRad(Number(cameraAngle.value));
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (state.bindingTarget) {
+      captureKeyBinding(event);
       return;
     }
 
-    showMainMenu();
-  });
-}
-
-shadowQualitySelect.addEventListener('change', () => {
-  setShadowQuality(shadowQualitySelect.value);
-});
-
-for (const button of keybindButtons) {
-  button.addEventListener('click', () => {
-    startKeyBinding(button.dataset.bindAction);
-  });
-}
-
-resetBindingsButton.addEventListener('click', () => {
-  state.bindingTarget = null;
-  state.keyBindings = cloneDefaultKeyBindings();
-  saveKeyBindings();
-  clearMovementInput();
-  renderKeyBindings('Controls reset');
-});
-
-graphicsPresetSelect.addEventListener('change', () => {
-  const preset = graphicsPresets[graphicsPresetSelect.value] ? graphicsPresetSelect.value : 'medium';
-  const profile = graphicsPresets[preset];
-  graphicsSettings = {
-    preset,
-    resolutionScale: profile.defaultResolutionScale,
-    frameRateLimit: profile.defaultFrameRateLimit,
-    shadowQuality: profile.defaultShadowQuality,
-  };
-  saveGraphicsSettings();
-  renderGraphicsSettings();
-  applyGraphicsSettings();
-});
-
-resolutionScaleInput.addEventListener('input', () => {
-  graphicsSettings.resolutionScale = Number(resolutionScaleInput.value);
-  saveGraphicsSettings();
-  renderGraphicsSettings();
-  applyGraphicsSettings();
-});
-
-frameRateLimitSelect.addEventListener('change', () => {
-  graphicsSettings.frameRateLimit = Number(frameRateLimitSelect.value);
-  lastFrameAt = 0;
-  clock.getDelta();
-  saveGraphicsSettings();
-  renderGraphicsSettings();
-});
-
-modeToggle.addEventListener('click', () => {
-  state.manual = !state.manual;
-  modeToggle.textContent = state.manual ? 'Play auto' : 'Play manual';
-  resetVehicle(state.manual);
-  updateStatusText();
-});
-
-cameraZoom.addEventListener('input', () => {
-  state.cameraZoom = Number(cameraZoom.value);
-});
-
-cameraAngle.addEventListener('input', () => {
-  state.cameraAngle = THREE.MathUtils.degToRad(Number(cameraAngle.value));
-});
-
-window.addEventListener('keydown', (event) => {
-  if (state.bindingTarget) {
-    captureKeyBinding(event);
-    return;
-  }
-
-  if (event.key === 'Escape') {
-    if (state.screen === 'playing') {
-      pauseGame();
-    } else if (state.screen === 'paused') {
-      resumeGame();
-    } else {
+    if (event.key === 'Escape') {
       showMainMenu();
+      return;
     }
-    return;
-  }
 
-  if (!isMovementKey(event)) return;
-  event.preventDefault();
-  setMovementInput(event, true);
-});
+    if (event.key.toLowerCase() === 'r' && (state.screen === 'playing' || state.screen === 'result')) {
+      event.preventDefault();
+      unlockAudio();
+      restartCurrentRun();
+      return;
+    }
 
-window.addEventListener('keyup', (event) => {
-  if (!isMovementKey(event)) return;
-  event.preventDefault();
-  setMovementInput(event, false);
-});
+    if (!isMovementKey(event)) return;
+    event.preventDefault();
+    unlockAudio();
+    setMovementInput(event, true);
+  });
 
-window.addEventListener('resize', onResize);
-renderKeyBindings();
-showMainMenu();
-animate();
+  window.addEventListener('keyup', (event) => {
+    if (!isMovementKey(event)) return;
+    event.preventDefault();
+    setMovementInput(event, false);
+  });
+
+  window.addEventListener('resize', onResize);
+}
 
 function setupLights() {
   const hemi = new THREE.HemisphereLight(0xd8f5ff, 0x263124, 1.9);
@@ -449,8 +671,13 @@ function createGround() {
   grid.material.opacity = 0.2;
   world.add(grid);
 
+  const initialRoute = levelConfigs[0].route;
   const donutGuide = new THREE.Mesh(
-    new THREE.RingGeometry(sim.targetRadius - 0.05, sim.targetRadius + 0.05, 160),
+    new THREE.RingGeometry(
+      initialRoute.targetRadius - initialRoute.guideWidth / 2,
+      initialRoute.targetRadius + initialRoute.guideWidth / 2,
+      160,
+    ),
     new THREE.MeshBasicMaterial({
       color: 0xb9c6a9,
       transparent: true,
@@ -475,41 +702,26 @@ function createGround() {
   inner.castShadow = true;
   world.add(inner);
 
-  const levels = [
-    {
-      background: 0x07090a,
-      fog: 0x07090a,
-      fogDensity: 0.022,
-      ground: 0x20261f,
-      gridMain: 0x5d6c62,
-      guide: 0xb9c6a9,
-      center: 0xffdf70,
-      props: createDockyardProps,
-    },
-    {
-      background: 0x071018,
-      fog: 0x071018,
-      fogDensity: 0.03,
-      ground: 0x27343a,
-      gridMain: 0x7ea8b4,
-      guide: 0xa9d9ee,
-      center: 0x9fe7ff,
-      props: createFrostTerminalProps,
-    },
-  ];
-
   return {
     setLevel(index) {
-      const level = levels[index] ?? levels[0];
-      scene.background = new THREE.Color(level.background);
-      scene.fog.color.setHex(level.fog);
-      state.levelFogDensity = level.fogDensity;
+      const level = getLevelConfig(index);
+      const { route, visual } = level;
+      scene.background = new THREE.Color(visual.background);
+      scene.fog.color.setHex(visual.fog);
+      state.levelFogDensity = visual.fogDensity;
       scene.fog.density = getCurrentLevelFogDensity();
-      ground.material.color.setHex(level.ground);
-      grid.material.color?.setHex(level.gridMain);
-      donutGuide.material.color.setHex(level.guide);
-      inner.material.color.setHex(level.center);
-      inner.material.emissive.setHex(level.center);
+      ground.material.color.setHex(visual.ground);
+      grid.material.color?.setHex(visual.gridMain);
+      donutGuide.material.color.setHex(visual.guide);
+      donutGuide.geometry.dispose();
+      donutGuide.geometry = new THREE.RingGeometry(
+        route.targetRadius - route.guideWidth / 2,
+        route.targetRadius + route.guideWidth / 2,
+        160,
+      );
+      donutGuide.rotation.x = -Math.PI / 2;
+      inner.material.color.setHex(visual.center);
+      inner.material.emissive.setHex(visual.center);
 
       disposeObjectTree(levelDecor);
       levelDecor.clear();
@@ -534,46 +746,38 @@ function createDockyardProps(parent) {
   });
   const poleGeometry = new THREE.CylinderGeometry(0.07, 0.07, 4.2, 10);
   const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x2c3334, roughness: 0.5, metalness: 0.2 });
-  const containerTransforms = containerMaterials.map(() => []);
-  const coneTransforms = [];
-  const poleTransforms = [];
 
   for (let i = 0; i < 10; i += 1) {
+    const stack = new THREE.Group();
+    const box = new THREE.Mesh(containerGeometry, containerMaterials[i % containerMaterials.length]);
+    box.castShadow = true;
+    box.receiveShadow = true;
+    stack.add(box);
     const angle = (i / 10) * Math.PI * 2;
     const radius = 14 + (i % 2) * 4;
-    containerTransforms[i % containerTransforms.length].push({
-      position: [Math.cos(angle) * radius, 0.55, Math.sin(angle) * radius],
-      rotation: [0, -angle + Math.PI / 2 + (i % 3) * 0.12, 0],
-    });
+    stack.position.set(Math.cos(angle) * radius, 0.55, Math.sin(angle) * radius);
+    stack.rotation.y = -angle + Math.PI / 2 + (i % 3) * 0.12;
+    parent.add(stack);
   }
 
   for (let i = 0; i < 18; i += 1) {
+    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
     const angle = (i / 18) * Math.PI * 2;
-    coneTransforms.push({
-      position: [Math.cos(angle) * 7.2, 0.26, Math.sin(angle) * 7.2],
-    });
+    cone.position.set(Math.cos(angle) * 7.2, 0.26, Math.sin(angle) * 7.2);
+    cone.castShadow = true;
+    parent.add(cone);
   }
 
   for (let i = 0; i < 6; i += 1) {
+    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
     const lamp = new THREE.PointLight(0xffc067, 18, 12, 2.2);
     const angle = (i / 6) * Math.PI * 2 + 0.35;
-    const position = new THREE.Vector3(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
-    poleTransforms.push({
-      position: [position.x, position.y, position.z],
-    });
-    lamp.position.copy(position).add(new THREE.Vector3(0, 2.1, 0));
+    pole.position.set(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
+    lamp.position.copy(pole.position).add(new THREE.Vector3(0, 2.1, 0));
     lamp.userData.levelLight = true;
-    parent.add(lamp);
+    pole.castShadow = true;
+    parent.add(pole, lamp);
   }
-
-  for (let i = 0; i < containerTransforms.length; i += 1) {
-    addInstancedMesh(parent, containerGeometry, containerMaterials[i], containerTransforms[i], {
-      castShadow: true,
-      receiveShadow: true,
-    });
-  }
-  addInstancedMesh(parent, coneGeometry, coneMaterial, coneTransforms, { castShadow: true });
-  addInstancedMesh(parent, poleGeometry, poleMaterial, poleTransforms, { castShadow: true });
 }
 
 function createFrostTerminalProps(parent) {
@@ -590,51 +794,39 @@ function createFrostTerminalProps(parent) {
   ];
   const mastGeometry = new THREE.CylinderGeometry(0.06, 0.06, 3.6, 10);
   const mastMaterial = new THREE.MeshStandardMaterial({ color: 0x334b56, roughness: 0.48, metalness: 0.3 });
-  const bankTransforms = [];
-  const barrierTransforms = barrierMaterials.map(() => []);
-  const mastTransforms = [];
 
   for (let i = 0; i < 16; i += 1) {
+    const bank = new THREE.Mesh(bankGeometry, bankMaterial);
     const angle = (i / 16) * Math.PI * 2;
     const radius = 9.2 + (i % 4) * 1.1;
-    bankTransforms.push({
-      position: [Math.cos(angle) * radius, 0.16, Math.sin(angle) * radius],
-      rotation: [0, -angle + Math.PI / 2, 0],
-      scale: [2.8 + Math.random() * 1.8, 0.32, 0.75 + Math.random() * 0.5],
-    });
+    bank.scale.set(2.8 + Math.random() * 1.8, 0.32, 0.75 + Math.random() * 0.5);
+    bank.position.set(Math.cos(angle) * radius, 0.16, Math.sin(angle) * radius);
+    bank.rotation.y = -angle + Math.PI / 2;
+    bank.castShadow = true;
+    bank.receiveShadow = true;
+    parent.add(bank);
   }
 
   for (let i = 0; i < 9; i += 1) {
+    const barrier = new THREE.Mesh(barrierGeometry, barrierMaterials[i % 2]);
     const angle = (i / 9) * Math.PI * 2 + 0.2;
-    barrierTransforms[i % 2].push({
-      position: [Math.cos(angle) * 15.5, 0.36, Math.sin(angle) * 15.5],
-      rotation: [0, -angle + Math.PI / 2, 0],
-    });
+    barrier.position.set(Math.cos(angle) * 15.5, 0.36, Math.sin(angle) * 15.5);
+    barrier.rotation.y = -angle + Math.PI / 2;
+    barrier.castShadow = true;
+    barrier.receiveShadow = true;
+    parent.add(barrier);
   }
 
   for (let i = 0; i < 7; i += 1) {
+    const mast = new THREE.Mesh(mastGeometry, mastMaterial);
     const lamp = new THREE.PointLight(0x8de8ff, 18, 12, 2.2);
     const angle = (i / 7) * Math.PI * 2;
-    const position = new THREE.Vector3(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
-    mastTransforms.push({
-      position: [position.x, position.y, position.z],
-    });
-    lamp.position.copy(position).add(new THREE.Vector3(0, 1.6, 0));
+    mast.position.set(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
+    lamp.position.copy(mast.position).add(new THREE.Vector3(0, 1.6, 0));
     lamp.userData.levelLight = true;
-    parent.add(lamp);
+    mast.castShadow = true;
+    parent.add(mast, lamp);
   }
-
-  addInstancedMesh(parent, bankGeometry, bankMaterial, bankTransforms, {
-    castShadow: true,
-    receiveShadow: true,
-  });
-  for (let i = 0; i < barrierTransforms.length; i += 1) {
-    addInstancedMesh(parent, barrierGeometry, barrierMaterials[i], barrierTransforms[i], {
-      castShadow: true,
-      receiveShadow: true,
-    });
-  }
-  addInstancedMesh(parent, mastGeometry, mastMaterial, mastTransforms, { castShadow: true });
 }
 
 function createCar() {
@@ -802,12 +994,10 @@ function createCar() {
 
   const underglow = new THREE.PointLight(0xff3b30, 2.8, 4.2, 3);
   underglow.position.set(0, 0.35, 0.35);
-  underglow.userData.optionalLight = true;
   root.add(underglow);
 
   const headGlow = new THREE.PointLight(0xffe2a6, 1.9, 5.8, 2.1);
   headGlow.position.set(0, 0.68, -2.5);
-  headGlow.userData.optionalLight = true;
   root.add(headGlow);
 
   root.traverse((child) => {
@@ -825,41 +1015,6 @@ function addMesh(parent, geometry, material, position = [0, 0, 0], rotation = [0
   mesh.rotation.set(...rotation);
   parent.add(mesh);
   return mesh;
-}
-
-function addInstancedMesh(parent, geometry, material, transforms, options = {}) {
-  if (transforms.length === 0) return null;
-
-  const mesh = new THREE.InstancedMesh(geometry, material, transforms.length);
-  const dummy = new THREE.Object3D();
-
-  for (let i = 0; i < transforms.length; i += 1) {
-    const transform = transforms[i];
-    dummy.position.set(...transform.position);
-    dummy.rotation.set(...(transform.rotation ?? [0, 0, 0]));
-    dummy.scale.set(...(transform.scale ?? [1, 1, 1]));
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
-  }
-
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.castShadow = Boolean(options.castShadow);
-  mesh.receiveShadow = Boolean(options.receiveShadow);
-  parent.add(mesh);
-  return mesh;
-}
-
-function disposeObjectResources(object) {
-  object.traverse((child) => {
-    if (child.geometry) child.geometry.dispose();
-    if (child.material) {
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      for (const material of materials) {
-        if (material.map) material.map.dispose();
-        material.dispose();
-      }
-    }
-  });
 }
 
 function makeCarHullGeometry() {
@@ -1078,12 +1233,12 @@ function createSmokeSystem() {
   };
 }
 
-function makeSmokeTexture(size = 128) {
+function makeSmokeTexture(size) {
   const smokeCanvas = document.createElement('canvas');
   smokeCanvas.width = size;
   smokeCanvas.height = size;
   const context = smokeCanvas.getContext('2d');
-  const center = size * 0.5;
+  const center = size / 2;
   const gradient = context.createRadialGradient(center, center, size * 0.04, center, center, size * 0.48);
   gradient.addColorStop(0, 'rgba(255,255,255,0.92)');
   gradient.addColorStop(0.32, 'rgba(218,222,211,0.5)');
@@ -1130,7 +1285,7 @@ function createTrailMesh(parent, color) {
   const width = 0.23;
   const geometry = new THREE.BufferGeometry();
   const material = new THREE.MeshBasicMaterial({
-    color,
+    color: 0xffffff,
     transparent: true,
     opacity: 0.82,
     depthWrite: false,
@@ -1184,6 +1339,8 @@ function createTrailMesh(parent, color) {
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 64);
   }
 
+  configure(getGraphicsProfile().skidPoints);
+
   function pushPoint(x, y, z, strength) {
     if (pointCount === maxPoints) {
       for (let i = 1; i < maxPoints; i += 1) {
@@ -1197,8 +1354,6 @@ function createTrailMesh(parent, color) {
     points[pointCount].strength = strength;
     pointCount += 1;
   }
-
-  configure(getGraphicsProfile().skidPoints);
 
   return {
     setBudget(pointsLimit) {
@@ -1296,14 +1451,22 @@ function animate(now = 0) {
 
   const rawDelta = clock.getDelta();
   const delta = Math.min(rawDelta, 0.033);
+  let telemetry = getVehicleTelemetry(state.vehicle);
 
   if (!state.paused) {
     state.elapsed += delta;
     updateVehicle(delta);
-    updateCarVisuals(delta);
+    telemetry = getVehicleTelemetry(state.vehicle);
+    updateFeedbackState(delta, telemetry);
+    updateCarVisuals(delta, telemetry);
     updateEffects(delta);
+    updateRun(delta, telemetry);
+  } else {
+    updateFeedbackState(delta, telemetry);
   }
 
+  updateFeedbackVisuals(delta);
+  updateAudioFeedback(delta, telemetry);
   smokeSystem.update(delta);
   skidSystem.update();
   renderer.render(scene, camera);
@@ -1311,6 +1474,9 @@ function animate(now = 0) {
 
 function updateVehicle(delta) {
   const vehicle = state.vehicle;
+  const level = getActiveLevelConfig();
+  const route = level.route;
+  const handling = getActiveHandling(level);
   const basis = getVehicleBasis(vehicle.yaw);
   const radial = vehicle.position.clone();
   radial.y = 0;
@@ -1318,13 +1484,17 @@ function updateVehicle(delta) {
   radial.normalize();
   const inward = radial.clone().multiplyScalar(-1);
   const tangent = new THREE.Vector3(-radial.z, 0, radial.x);
-  const desiredForward = tangent.clone().multiplyScalar(Math.cos(sim.driftAngle)).addScaledVector(inward, Math.sin(sim.driftAngle)).normalize();
+  const desiredForward = tangent.clone().multiplyScalar(Math.cos(route.driftAngle)).addScaledVector(inward, Math.sin(route.driftAngle)).normalize();
   const desiredYaw = yawFromForward(desiredForward);
   const yawError = wrapAngle(desiredYaw - vehicle.yaw);
 
-  const controls = getDriverControls(vehicle, basis, radial, tangent, yawError);
+  const controls = getDriverControls(vehicle, basis, radial, tangent, yawError, handling);
   vehicle.throttle = controls.throttle;
-  vehicle.steer = THREE.MathUtils.lerp(vehicle.steer, controls.steer, 1 - Math.pow(0.0008, delta));
+  vehicle.steer = THREE.MathUtils.lerp(
+    vehicle.steer,
+    controls.steer,
+    1 - Math.pow(state.manual ? manualTuning.steerResponse : 0.0008, delta),
+  );
 
   const frontDir = basis.forward.clone().multiplyScalar(Math.cos(vehicle.steer)).addScaledVector(basis.right, Math.sin(vehicle.steer)).normalize();
   const frontSide = basis.right.clone().multiplyScalar(Math.cos(vehicle.steer)).addScaledVector(basis.forward, -Math.sin(vehicle.steer)).normalize();
@@ -1342,44 +1512,51 @@ function updateVehicle(delta) {
   const force = new THREE.Vector3();
   let torque = 0;
 
-  const radiusError = vehicle.position.length() - sim.targetRadius;
+  const radiusError = vehicle.position.length() - route.targetRadius;
   const radialSpeed = dotGround(vehicle.velocity, radial);
   const tangentSpeed = dotGround(vehicle.velocity, tangent);
   const driverCorrection = state.manual
     ? new THREE.Vector3()
     : tangent
       .clone()
-      .multiplyScalar((sim.targetSpeed - tangentSpeed) * 1.75)
+      .multiplyScalar((route.targetSpeed - tangentSpeed) * 1.75)
       .addScaledVector(radial, -radiusError * 8.8 - radialSpeed * 5.6);
 
-  const frontLateralForce = THREE.MathUtils.clamp(-frontLat * sim.frontCornering, -sim.frontGrip, sim.frontGrip);
+  const frontCornering = sim.frontCornering * handling.frontCorneringScale;
+  const rearCornering = sim.rearCornering * handling.rearCorneringScale;
+  const frontGrip = sim.frontGrip * handling.frontGripScale;
+  const rearGrip = sim.rearGrip * handling.rearGripScale;
+  const frontLateralForce = THREE.MathUtils.clamp(-frontLat * frontCornering, -frontGrip, frontGrip);
   const frontForce = frontSide.clone().multiplyScalar(frontLateralForce).add(driverCorrection.clampLength(0, 8.4));
   force.add(frontForce);
   torque += torqueFromForce(frontContact.relative, frontForce);
 
-  const brakeForce = controls.brake * 9.5;
-  const rearDriveForce = sim.driveForce * vehicle.throttle - Math.sign(rearLong || 1) * brakeForce;
-  const rearSlipFromPower = THREE.MathUtils.clamp((Math.abs(rearDriveForce) - Math.abs(rearLong) * 0.65) / sim.driveForce, 0, 1);
-  const rearGripLimit = THREE.MathUtils.lerp(sim.rearGrip, 1.65, rearSlipFromPower);
-  const rearLateralForce = THREE.MathUtils.clamp(-rearLat * sim.rearCornering, -rearGripLimit, rearGripLimit);
+  const brakeForce = controls.brake * manualTuning.brakeForce;
+  const driveForce = sim.driveForce * handling.driveForceScale;
+  const rearDriveForce = driveForce * vehicle.throttle - Math.sign(rearLong || 1) * brakeForce;
+  const rearSlipFromPower = THREE.MathUtils.clamp((Math.abs(rearDriveForce) - Math.abs(rearLong) * 0.65) / driveForce, 0, 1);
+  const rearGripLimit = THREE.MathUtils.lerp(rearGrip, handling.rearPowerGrip, rearSlipFromPower);
+  const rearLateralForce = THREE.MathUtils.clamp(-rearLat * rearCornering, -rearGripLimit, rearGripLimit);
   const rearForce = basis.right.clone().multiplyScalar(rearLateralForce).addScaledVector(basis.forward, rearDriveForce);
   force.add(rearForce);
   torque += torqueFromForce(rearContact.relative, rearForce);
 
-  const yawControlTorque = state.manual ? -vehicle.yawRate * 0.28 : yawError * 22 - vehicle.yawRate * 1.05;
+  const yawControlTorque = state.manual
+    ? -vehicle.yawRate * manualTuning.yawDamping * handling.yawDampingScale
+    : yawError * 22 - vehicle.yawRate * 1.05;
   torque += yawControlTorque;
 
-  force.addScaledVector(vehicle.velocity, state.manual ? -0.44 : -0.72);
+  force.addScaledVector(vehicle.velocity, state.manual ? -manualTuning.linearDrag * handling.dragScale : -0.72);
   vehicle.velocity.addScaledVector(force, delta / sim.mass);
-  vehicle.velocity.clampLength(0, state.manual ? 9.2 : 7.4);
+  vehicle.velocity.clampLength(0, state.manual ? manualTuning.maxSpeed * handling.maxSpeedScale : 7.4);
   vehicle.position.addScaledVector(vehicle.velocity, delta);
 
   vehicle.yawRate += (torque / sim.inertia) * delta;
   vehicle.yawRate = THREE.MathUtils.clamp(vehicle.yawRate, -2.4, 2.4);
   vehicle.yaw = wrapAngle(vehicle.yaw + vehicle.yawRate * delta);
 
-  vehicle.frontSlip = THREE.MathUtils.clamp(Math.abs(frontLat) / 4.2 + Math.abs(vehicle.steer) * 0.15, 0, 1);
-  vehicle.rearSlip = THREE.MathUtils.clamp(Math.abs(rearLat) / 2.5 + rearSlipFromPower * 0.9, 0, 1);
+  vehicle.frontSlip = THREE.MathUtils.clamp(Math.abs(frontLat) / (4.2 * handling.frontGripScale) + Math.abs(vehicle.steer) * 0.15, 0, 1);
+  vehicle.rearSlip = THREE.MathUtils.clamp(Math.abs(rearLat) / (2.5 * handling.rearGripScale) + rearSlipFromPower * 0.9, 0, 1);
   vehicle.lateralG = THREE.MathUtils.clamp((frontLateralForce + rearLateralForce) / 18, -1.25, 1.25);
   vehicle.wheelSpinFront += Math.max(0.8, Math.abs(frontLong)) * delta * 2.8;
   vehicle.wheelSpinRear += (Math.max(1, Math.abs(rearLong)) * 3.2 + Math.abs(rearDriveForce) * 1.1 * vehicle.rearSlip) * delta;
@@ -1387,11 +1564,9 @@ function updateVehicle(delta) {
   updateWheelContactData(vehicle);
 }
 
-function updateCarVisuals(delta) {
+function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle)) {
   const vehicle = state.vehicle;
-  const speed = vehicle.velocity.length();
-  const slipAngle = signedAngleOnGround(getVehicleBasis(vehicle.yaw).forward, vehicle.velocity.clone().normalize());
-  const showWheelBlur = getGraphicsProfile().wheelBlur;
+  const { speed, slipAngle } = telemetry;
 
   car.root.position.copy(vehicle.position);
   car.root.rotation.y = vehicle.yaw;
@@ -1403,6 +1578,7 @@ function updateCarVisuals(delta) {
   car.sprung.position.y = 0.03 + vehicle.rearSlip * 0.035 + Math.sin(state.elapsed * 18) * vehicle.rearSlip * 0.012;
 
   for (const wheel of car.wheels) {
+    const showWheelBlur = getGraphicsProfile().wheelBlur;
     if (wheel.front) {
       wheel.steering.rotation.y = -vehicle.steer;
       wheel.spin.rotation.x = vehicle.wheelSpinFront;
@@ -1430,14 +1606,60 @@ function updateCarVisuals(delta) {
     .clone()
     .add(orbitOffset)
     .add(new THREE.Vector3(0, (narrowView ? 7.6 : 5.3) * zoom * state.cameraHeight, 0));
+  const shake = state.feedback.shake;
+  const shakeOffset = new THREE.Vector3();
+  if (shake > 0.001) {
+    const jitterA = Math.sin(state.elapsed * 58.7) * 0.5 + Math.sin(state.elapsed * 91.3) * 0.5;
+    const jitterB = Math.cos(state.elapsed * 64.1) * 0.5 + Math.sin(state.elapsed * 43.9) * 0.5;
+    const amplitude = shake * 0.075;
+    shakeOffset
+      .copy(basis.right)
+      .multiplyScalar(jitterA * amplitude)
+      .add(new THREE.Vector3(0, jitterB * amplitude * 0.55, 0));
+    cameraTarget.add(shakeOffset);
+  }
   camera.position.lerp(cameraTarget, 1 - Math.pow(0.001, delta));
-  camera.lookAt(lookAt);
+  camera.lookAt(lookAt.addScaledVector(shakeOffset, 0.45));
 
   speedEl.textContent = `${Math.round(speed * 10.8)} km/h`;
-  angleEl.textContent = `${Math.round(Math.abs(slipAngle) * THREE.MathUtils.RAD2DEG)} deg`;
+  angleEl.textContent = `${Math.round(speed < runConfig.angleDisplaySpeed ? 0 : Math.abs(slipAngle) * THREE.MathUtils.RAD2DEG)} deg`;
+  return telemetry;
 }
 
-function getDriverControls(vehicle, basis, radial, tangent, yawError) {
+function getVehicleTelemetry(vehicle) {
+  const speed = vehicle.velocity.length();
+  const slipAngle = speed < runConfig.angleDisplaySpeed
+    ? 0
+    : signedAngleOnGround(getVehicleBasis(vehicle.yaw).forward, vehicle.velocity);
+  return { speed, slipAngle };
+}
+
+function getLevelConfig(index) {
+  return levelConfigs[index] ?? levelConfigs[0];
+}
+
+function getActiveLevelConfig() {
+  return getLevelConfig(state.level);
+}
+
+function getActiveHandling(level = getActiveLevelConfig()) {
+  const launchAssist = state.manual
+    ? 1 - THREE.MathUtils.clamp(
+      (state.run.duration - state.run.timeLeft) / manualTuning.launchAssistDuration,
+      0,
+      1,
+    )
+    : 0;
+
+  return {
+    ...level.handling,
+    driveForceScale: level.handling.driveForceScale * THREE.MathUtils.lerp(1, manualTuning.launchDriveForceScale, launchAssist),
+    steerScale: level.handling.steerScale * THREE.MathUtils.lerp(1, manualTuning.launchSteerScale, launchAssist),
+    yawDampingScale: level.handling.yawDampingScale * THREE.MathUtils.lerp(1, manualTuning.launchYawDampingScale, launchAssist),
+  };
+}
+
+function getDriverControls(vehicle, basis, radial, tangent, yawError, handling = getActiveHandling()) {
   if (!state.manual) {
     return {
       throttle: 1,
@@ -1450,12 +1672,16 @@ function getDriverControls(vehicle, basis, radial, tangent, yawError) {
   const forwardInput = Number(state.input.up);
   const reverseInput = Number(state.input.down);
   const forwardSpeed = dotGround(vehicle.velocity, basis.forward);
-  const brakingBeforeReverse = reverseInput > 0 && forwardSpeed > 0.45;
+  const brakingBeforeReverse = reverseInput > 0 && forwardSpeed > manualTuning.brakingSpeedThreshold;
   const speed = vehicle.velocity.length();
-  const steerLimit = THREE.MathUtils.lerp(0.82, 0.5, THREE.MathUtils.clamp(speed / 9, 0, 1));
+  const steerLimit = THREE.MathUtils.lerp(
+    manualTuning.steerLimitLowSpeed,
+    manualTuning.steerLimitHighSpeed,
+    THREE.MathUtils.clamp(speed / manualTuning.steerFalloffSpeed, 0, 1),
+  ) * handling.steerScale;
 
   return {
-    throttle: forwardInput - (brakingBeforeReverse ? 0 : reverseInput * 0.62),
+    throttle: forwardInput - (brakingBeforeReverse ? 0 : reverseInput * manualTuning.throttleReverseScale),
     brake: brakingBeforeReverse ? 1 : 0,
     steer: steerInput * steerLimit,
   };
@@ -1478,46 +1704,57 @@ function resetVehicle(manual) {
   state.smokeAccumulator = 0;
 }
 
+function resetRun() {
+  state.run.duration = runConfig.duration;
+  state.run.timeLeft = runConfig.duration;
+  state.run.score = 0;
+  state.run.combo = 1;
+  state.run.driftDuration = 0;
+  state.run.invalidTime = runConfig.breakGrace;
+  state.run.driftValid = false;
+  state.run.pointsPerSecond = 0;
+  state.run.ended = false;
+  state.feedback.popupBank = 0;
+  state.feedback.popupCooldown = 0;
+  state.feedback.comboPulse = 0;
+  state.feedback.lastComboStep = 1;
+  scorePopupsEl.replaceChildren();
+  updateHud();
+}
+
 function startLevel(levelIndex) {
+  unlockAudio();
   state.screen = 'playing';
-  state.level = levelIndex;
+  state.level = levelConfigs[levelIndex] ? levelIndex : 0;
   state.manual = true;
   state.paused = false;
   modeToggle.textContent = 'Play auto';
-  playButton.textContent = 'Play';
-  levelSystem.setLevel(levelIndex);
+  levelSystem.setLevel(state.level);
   smokeSystem.clear();
   skidSystem.clear();
   resetVehicle(true);
+  resetRun();
   updateStatusText();
   hud.hidden = false;
   menuOverlay.hidden = true;
   clearMovementInput();
 }
 
-function pauseGame() {
-  if (state.screen !== 'playing') return;
+function restartCurrentRun() {
+  if (state.screen !== 'playing' && state.screen !== 'result') return;
+  startLevel(state.level);
+}
 
-  state.screen = 'paused';
+function showLevelSelect() {
+  state.screen = 'menu';
   state.paused = true;
+  state.manual = false;
   state.bindingTarget = null;
+  modeToggle.textContent = 'Play manual';
   updateStatusText();
-  hud.hidden = false;
+  hud.hidden = true;
   menuOverlay.hidden = false;
-  showPauseMenu();
-  clearMovementInput();
-}
-
-function resumeGame() {
-  if (state.screen !== 'paused') return;
-
-  state.screen = 'playing';
-  state.paused = false;
-  state.bindingTarget = null;
-  playButton.textContent = 'Play';
-  updateStatusText();
-  hud.hidden = false;
-  menuOverlay.hidden = true;
+  showMenuPanel('levels');
   clearMovementInput();
 }
 
@@ -1526,18 +1763,13 @@ function showMainMenu() {
   state.paused = true;
   state.manual = false;
   state.bindingTarget = null;
-  playButton.textContent = 'Play';
   modeToggle.textContent = 'Play manual';
   updateStatusText();
+  updateHud();
   hud.hidden = true;
   menuOverlay.hidden = false;
   showMenuPanel('main');
   clearMovementInput();
-}
-
-function showPauseMenu() {
-  playButton.textContent = 'Resume';
-  showMenuPanel('main');
 }
 
 function showMenuPanel(name) {
@@ -1555,6 +1787,318 @@ function quitGame() {
   menuOverlay.hidden = false;
   showMenuPanel('quit');
   if (window.opener) window.close();
+}
+
+function updateRun(delta, telemetry) {
+  const run = state.run;
+  if (run.ended) return;
+
+  const activeDelta = Math.min(delta, run.timeLeft);
+  if (activeDelta <= 0) {
+    finishRun();
+    return;
+  }
+
+  updateScoring(activeDelta, telemetry);
+  run.timeLeft = Math.max(0, run.timeLeft - activeDelta);
+  updateHud();
+  updateStatusText();
+
+  if (run.timeLeft <= 0) finishRun();
+}
+
+function updateScoring(delta, telemetry) {
+  const run = state.run;
+  const speed = telemetry.speed;
+  const angle = Math.abs(telemetry.slipAngle);
+  const rearSlip = state.vehicle.rearSlip;
+  const validDrift = state.manual
+    && speed >= runConfig.minSpeed
+    && angle >= runConfig.minAngle
+    && angle <= runConfig.maxAngle
+    && rearSlip >= runConfig.minRearSlip;
+
+  run.driftValid = validDrift;
+
+  if (!validDrift) {
+    run.invalidTime += delta;
+    run.pointsPerSecond = 0;
+    state.feedback.lastComboStep = Math.max(1, Math.floor(run.combo));
+    if (run.invalidTime > runConfig.breakGrace) {
+      run.driftDuration = 0;
+      run.combo = Math.max(1, run.combo - runConfig.comboDecay * delta);
+    } else {
+      run.combo = Math.max(1, run.combo - runConfig.comboSoftDecay * delta);
+    }
+    return;
+  }
+
+  run.invalidTime = 0;
+  run.driftDuration += delta;
+
+  const speedFactor = Math.max(
+    0.35,
+    THREE.MathUtils.clamp((speed - runConfig.minSpeed) / (8.5 - runConfig.minSpeed), 0, 1),
+  );
+  const angleFactor = Math.max(
+    0.3,
+    THREE.MathUtils.clamp((angle - runConfig.minAngle) / (runConfig.idealAngle - runConfig.minAngle), 0, 1),
+  );
+  const slipFactor = Math.max(
+    0.35,
+    THREE.MathUtils.clamp((rearSlip - runConfig.minRearSlip) / (1 - runConfig.minRearSlip), 0, 1),
+  );
+  const sustainFactor = THREE.MathUtils.clamp(run.driftDuration / runConfig.sustainRamp, 0.45, 1);
+  const levelMultiplier = getActiveLevelConfig().scoring.driftRewardMultiplier;
+  const previousComboStep = Math.floor(run.combo);
+
+  run.combo = Math.min(
+    runConfig.maxCombo,
+    run.combo + runConfig.comboGain * (0.75 + angleFactor + slipFactor) * delta,
+  );
+  run.pointsPerSecond = runConfig.basePointsPerSecond
+    * speedFactor
+    * angleFactor
+    * slipFactor
+    * sustainFactor
+    * run.combo
+    * levelMultiplier;
+  const earned = run.pointsPerSecond * delta;
+  run.score += earned;
+  state.feedback.popupBank += earned;
+
+  const comboStep = Math.floor(run.combo);
+  if (comboStep > previousComboStep && comboStep > state.feedback.lastComboStep && comboStep >= 2) {
+    state.feedback.comboPulse = 0.45;
+    state.feedback.lastComboStep = comboStep;
+    createScorePopup(`x${run.combo.toFixed(1)}`, true);
+  }
+
+  if (state.feedback.popupBank >= 75 && state.feedback.popupCooldown <= 0) {
+    createScorePopup(`+${Math.floor(state.feedback.popupBank)}`);
+    state.feedback.popupBank = 0;
+    state.feedback.popupCooldown = 0.65;
+  }
+}
+
+function finishRun() {
+  const run = state.run;
+  run.timeLeft = 0;
+  run.ended = true;
+  run.driftValid = false;
+  run.pointsPerSecond = 0;
+  state.screen = 'result';
+  state.paused = true;
+  clearMovementInput();
+
+  const finalScore = Math.floor(run.score);
+  if (finalScore > run.bestScore) {
+    run.bestScore = finalScore;
+    saveBestScore(finalScore);
+  }
+
+  updateHud();
+  updateResultPanel();
+  updateStatusText();
+  hud.hidden = true;
+  menuOverlay.hidden = false;
+  showMenuPanel('result');
+}
+
+function updateHud() {
+  scoreEl.textContent = String(Math.floor(state.run.score));
+  comboEl.textContent = `x${state.run.combo.toFixed(1)}`;
+  timerEl.textContent = String(Math.ceil(state.run.timeLeft));
+  bestScoreEl.textContent = String(state.run.bestScore);
+}
+
+function updateResultPanel() {
+  resultScoreEl.textContent = String(Math.floor(state.run.score));
+  resultBestScoreEl.textContent = String(state.run.bestScore);
+}
+
+function updateFeedbackState(delta, telemetry) {
+  const targetIntensity = state.screen === 'playing' && !state.paused
+    ? getDriftIntensity(telemetry)
+    : 0;
+  const follow = targetIntensity > state.feedback.driftIntensity ? 0.002 : 0.035;
+  state.feedback.driftIntensity = THREE.MathUtils.lerp(
+    state.feedback.driftIntensity,
+    targetIntensity,
+    1 - Math.pow(follow, delta),
+  );
+
+  const targetShake = THREE.MathUtils.clamp((state.feedback.driftIntensity - 0.42) / 0.58, 0, 1);
+  state.feedback.shake = THREE.MathUtils.lerp(
+    state.feedback.shake,
+    targetShake,
+    1 - Math.pow(0.018, delta),
+  );
+}
+
+function updateFeedbackVisuals(delta) {
+  const intensity = state.feedback.driftIntensity;
+  driftFeedbackEl.style.setProperty('--drift-intensity', intensity.toFixed(3));
+  driftFeedbackEl.classList.toggle('is-active', intensity > 0.34);
+  driftFeedbackEl.classList.toggle('is-strong', intensity > 0.68);
+  hud.classList.toggle('is-drifting', state.run.driftValid);
+
+  state.feedback.popupCooldown = Math.max(0, state.feedback.popupCooldown - delta);
+  state.feedback.comboPulse = Math.max(0, state.feedback.comboPulse - delta);
+  comboEl.classList.toggle('is-pulsing', state.feedback.comboPulse > 0);
+}
+
+function getDriftIntensity(telemetry) {
+  const speedFactor = THREE.MathUtils.clamp((telemetry.speed - 2.2) / 5.8, 0, 1);
+  const rearSlipFactor = THREE.MathUtils.clamp((state.vehicle.rearSlip - 0.18) / 0.68, 0, 1);
+  const angleFactor = THREE.MathUtils.clamp(
+    (Math.abs(telemetry.slipAngle) - THREE.MathUtils.degToRad(8)) / THREE.MathUtils.degToRad(46),
+    0,
+    1,
+  );
+  const validBonus = state.run.driftValid ? 0.18 : 0;
+  return THREE.MathUtils.clamp((rearSlipFactor * 0.58 + angleFactor * 0.42) * speedFactor + validBonus, 0, 1);
+}
+
+function createScorePopup(text, combo = false) {
+  if (!scorePopupsEl) return;
+  const popup = document.createElement('span');
+  popup.className = combo ? 'score-popup score-popup-combo' : 'score-popup';
+  popup.textContent = text;
+  scorePopupsEl.append(popup);
+  window.setTimeout(() => popup.remove(), 900);
+}
+
+function unlockAudio() {
+  if (state.muted || !window.AudioContext && !window.webkitAudioContext) return;
+  if (!audioEngine) audioEngine = createAudioEngine();
+  audioEngine?.resume();
+}
+
+function updateAudioFeedback(delta, telemetry) {
+  if (!audioEngine) return;
+  audioEngine.update(delta, telemetry, {
+    playing: state.screen === 'playing' && !state.paused,
+    muted: state.muted,
+    throttle: state.vehicle.throttle,
+    rearSlip: state.vehicle.rearSlip,
+    driftIntensity: state.feedback.driftIntensity,
+  });
+}
+
+function setMuted(muted) {
+  state.muted = muted;
+  muteToggle.checked = muted;
+  saveMutePreference(muted);
+
+  if (muted) {
+    audioEngine?.setMuted(true);
+    return;
+  }
+
+  audioEngine?.setMuted(false);
+  if (state.screen === 'playing') unlockAudio();
+}
+
+function createAudioEngine() {
+  const Context = window.AudioContext || window.webkitAudioContext;
+  const context = new Context();
+  const masterGain = context.createGain();
+  const engineGain = context.createGain();
+  const engineFilter = context.createBiquadFilter();
+  const engineOsc = context.createOscillator();
+  const engineSubOsc = context.createOscillator();
+  const tireGain = context.createGain();
+  const tireFilter = context.createBiquadFilter();
+  const tireSource = context.createBufferSource();
+
+  masterGain.gain.value = 0;
+  engineGain.gain.value = 0;
+  tireGain.gain.value = 0;
+  engineFilter.type = 'lowpass';
+  engineFilter.frequency.value = 340;
+  engineFilter.Q.value = 0.7;
+  tireFilter.type = 'bandpass';
+  tireFilter.frequency.value = 1600;
+  tireFilter.Q.value = 5.4;
+
+  engineOsc.type = 'sawtooth';
+  engineSubOsc.type = 'triangle';
+  engineOsc.frequency.value = 90;
+  engineSubOsc.frequency.value = 45;
+
+  engineOsc.connect(engineFilter);
+  engineSubOsc.connect(engineFilter);
+  engineFilter.connect(engineGain);
+  engineGain.connect(masterGain);
+
+  tireSource.buffer = createNoiseBuffer(context);
+  tireSource.loop = true;
+  tireSource.connect(tireFilter);
+  tireFilter.connect(tireGain);
+  tireGain.connect(masterGain);
+  masterGain.connect(context.destination);
+
+  engineOsc.start();
+  engineSubOsc.start();
+  tireSource.start();
+
+  return {
+    resume() {
+      if (context.state === 'suspended') context.resume();
+    },
+    setMuted(muted) {
+      const now = context.currentTime;
+      masterGain.gain.cancelScheduledValues(now);
+      masterGain.gain.setTargetAtTime(muted ? 0 : masterGain.gain.value, now, 0.025);
+      if (muted && context.state === 'running') {
+        window.setTimeout(() => {
+          if (state.muted && context.state === 'running') context.suspend();
+        }, 80);
+      }
+    },
+    update(delta, telemetry, audioState) {
+      if (context.state !== 'running') return;
+
+      const now = context.currentTime;
+      const speedFactor = THREE.MathUtils.clamp(telemetry.speed / 9.5, 0, 1);
+      const throttle = Math.abs(audioState.throttle);
+      const rearSlip = THREE.MathUtils.clamp(audioState.rearSlip, 0, 1);
+      const active = audioState.playing && !audioState.muted;
+      const engineLevel = active ? (0.035 + speedFactor * 0.055 + throttle * 0.05) : 0;
+      const tireLevel = active
+        ? Math.max(0, rearSlip - 0.24) * (0.12 + audioState.driftIntensity * 0.18)
+        : 0;
+      const baseFrequency = 65 + speedFactor * 135 + throttle * 55 + rearSlip * 22;
+
+      masterGain.gain.setTargetAtTime(active ? 0.78 : 0, now, 0.08);
+      engineGain.gain.setTargetAtTime(engineLevel, now, 0.06);
+      tireGain.gain.setTargetAtTime(tireLevel, now, 0.035);
+      engineOsc.frequency.setTargetAtTime(baseFrequency, now, 0.05);
+      engineSubOsc.frequency.setTargetAtTime(baseFrequency * 0.5, now, 0.05);
+      engineFilter.frequency.setTargetAtTime(260 + speedFactor * 720 + throttle * 260, now, 0.08);
+      tireFilter.frequency.setTargetAtTime(1200 + rearSlip * 1800 + Math.sin(state.elapsed * 18) * 90, now, 0.04);
+
+      if (delta > 0.1) {
+        engineGain.gain.setTargetAtTime(0, now, 0.02);
+        tireGain.gain.setTargetAtTime(0, now, 0.02);
+      }
+    },
+  };
+}
+
+function createNoiseBuffer(context) {
+  const length = Math.floor(context.sampleRate * 0.75);
+  const buffer = context.createBuffer(1, length, context.sampleRate);
+  const samples = buffer.getChannelData(0);
+  let last = 0;
+
+  for (let i = 0; i < length; i += 1) {
+    last = last * 0.78 + (Math.random() * 2 - 1) * 0.22;
+    samples[i] = last;
+  }
+
+  return buffer;
 }
 
 function setShadowQuality(value) {
@@ -1602,7 +2146,11 @@ function loadGraphicsSettings() {
 }
 
 function saveGraphicsSettings() {
-  localStorage.setItem(graphicsStorageKey, JSON.stringify(graphicsSettings));
+  try {
+    localStorage.setItem(graphicsStorageKey, JSON.stringify(graphicsSettings));
+  } catch {
+    // Graphics settings remain active for the current session when storage is blocked.
+  }
 }
 
 function getGraphicsProfile() {
@@ -1685,8 +2233,28 @@ function applyGraphicsSettings() {
 }
 
 function updateStatusText() {
+  if (state.screen === 'result') {
+    statusEl.textContent = 'Finished';
+    return;
+  }
+
   if (state.paused) {
     statusEl.textContent = 'Paused';
+    return;
+  }
+
+  if (!state.manual) {
+    statusEl.textContent = 'Auto demo';
+    return;
+  }
+
+  if (state.run.driftValid) {
+    statusEl.textContent = 'Drifting';
+    return;
+  }
+
+  if (state.run.invalidTime <= runConfig.breakGrace && state.run.combo > 1.05) {
+    statusEl.textContent = 'Linking';
     return;
   }
 
@@ -1760,6 +2328,39 @@ function loadKeyBindings() {
     return bindings;
   } catch {
     return cloneDefaultKeyBindings();
+  }
+}
+
+function loadBestScore() {
+  try {
+    const saved = Number(localStorage.getItem(bestScoreStorageKey));
+    return Number.isFinite(saved) && saved > 0 ? Math.floor(saved) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveBestScore(score) {
+  try {
+    localStorage.setItem(bestScoreStorageKey, String(score));
+  } catch {
+    // Best score remains available in memory when storage is blocked.
+  }
+}
+
+function loadMutePreference() {
+  try {
+    return localStorage.getItem(muteStorageKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveMutePreference(muted) {
+  try {
+    localStorage.setItem(muteStorageKey, String(muted));
+  } catch {
+    // Mute still applies for the current session when storage is blocked.
   }
 }
 
@@ -2034,6 +2635,10 @@ function onResize() {
   renderer.setSize(width, height);
 }
 
+function getResponsiveFov() {
+  return window.innerWidth < 560 ? 58 : 48;
+}
+
 function getRenderPixelRatio() {
   const targetHeight = getTargetRenderHeight(graphicsSettings.resolutionScale);
   const targetRatio = targetHeight / Math.max(1, window.innerHeight);
@@ -2043,8 +2648,4 @@ function getRenderPixelRatio() {
 function getFrameInterval() {
   const limit = normalizeFrameRateLimit(graphicsSettings.frameRateLimit, getGraphicsProfile().defaultFrameRateLimit);
   return limit > 0 ? 1000 / limit : 0;
-}
-
-function getResponsiveFov() {
-  return window.innerWidth < 560 ? 58 : 48;
 }
