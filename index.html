@@ -9,12 +9,30 @@
   <body>
     <main id="app" aria-label="3D drift driving game">
       <canvas id="scene"></canvas>
+      <div class="drift-feedback" aria-hidden="true"></div>
+      <div class="score-popups" aria-hidden="true"></div>
       <section class="hud" aria-label="Simulation status">
         <div>
           <span class="label">Drift Donut</span>
           <strong id="status">Looping</strong>
         </div>
         <dl>
+          <div>
+            <dt>Score</dt>
+            <dd id="score">0</dd>
+          </div>
+          <div>
+            <dt>Combo</dt>
+            <dd id="combo">x1.0</dd>
+          </div>
+          <div>
+            <dt>Timer</dt>
+            <dd id="timer">90</dd>
+          </div>
+          <div>
+            <dt>Best</dt>
+            <dd id="best-score">0</dd>
+          </div>
           <div>
             <dt>Speed</dt>
             <dd id="speed">78 km/h</dd>
@@ -25,6 +43,7 @@
           </div>
         </dl>
         <div class="controls">
+          <button id="restart-button" type="button">Restart run</button>
           <button id="mode-toggle" type="button">Play manual</button>
           <label for="camera-zoom">
             <span>Camera zoom</span>
@@ -74,6 +93,13 @@
             </label>
           </div>
           <div class="settings-group">
+            <p class="settings-heading">Audio</p>
+            <label class="toggle-row" for="mute-toggle">
+              <span>Mute engine and tires</span>
+              <input id="mute-toggle" type="checkbox" />
+            </label>
+          </div>
+          <div class="settings-group">
             <p class="settings-heading">Controls</p>
             <div class="keybind-list" aria-label="Key bindings">
               <div class="keybind-row">
@@ -104,6 +130,35 @@
           <h2>Quit</h2>
           <p class="menu-copy">The game is stopped in this tab.</p>
           <button class="secondary-button" type="button" data-back-menu>Return to menu</button>
+        </div>
+
+        <div class="menu-panel result-panel" data-panel="result" hidden>
+          <p class="eyebrow">Run complete</p>
+          <h2>Results</h2>
+          <div class="result-stats">
+            <div>
+              <span>Score</span>
+              <strong id="result-score">0</strong>
+            </div>
+            <div>
+              <span>Best</span>
+              <strong id="result-best-score">0</strong>
+            </div>
+          </div>
+          <div class="menu-actions">
+            <button id="result-restart" type="button">Restart</button>
+            <button id="result-level-select" class="secondary-button" type="button">Level select</button>
+            <button id="result-main-menu" class="secondary-button" type="button">Main menu</button>
+          </div>
+        </div>
+
+        <div class="menu-panel webgl-fallback-panel" data-panel="webgl" role="alert" aria-live="assertive" hidden>
+          <p class="eyebrow">Game unavailable</p>
+          <h2>WebGL required</h2>
+          <p class="menu-copy">
+            This 3D drift game needs WebGL to run. Try another browser, update your graphics driver,
+            or enable hardware acceleration.
+          </p>
         </div>
       </section>
     </main>

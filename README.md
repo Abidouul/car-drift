@@ -10,3 +10,9 @@ Did like 2-4 prompts with Conductor and here are all the implementations that I 
   - Enable/Disable Shadows (still haven't poven if it helps with performance)
 -...
 -...
+
+## Build note
+
+The production build intentionally splits Three.js into a separate vendor chunk. The
+Three chunk is a little above 500 kB minified, so Vite's chunk warning limit is set
+to 550 kB while the game code remains in a much smaller app chunk.
