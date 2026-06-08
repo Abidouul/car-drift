@@ -12,10 +12,16 @@ Did like 2-4 prompts with Conductor and here are all the implementations that I 
   - Select graphics quality presets: High, Medium, Low, and Lowest.
   - Adjust resolution scale from 240p to 1080p.
   - Select shadow quality: High, Medium, Low, or Off.
+  - Activate/Deactivate engine sound.
+  - Limit Framerate to 30,45,60 or Unlimited.
 
 - Optimized the game to use less RAM and CPU.
 - Optimized the game to use more GPU power than RAM and CPU power.
 - Replaced real shadows with lighter fake/disabled shadow options on low settings.
+- Implementation of generated Sound for the engine (subject open for much better amelioration...)
+- Added Score like Drift Points.
+- Added Drift Multiplier. 
+- Added a Timer.
 
 Implementations that I wish to do in the future:
 
