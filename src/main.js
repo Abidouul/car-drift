@@ -177,12 +177,12 @@ const manualTuning = {
   throttleReverseScale: 0.58,
   brakingSpeedThreshold: 0.45,
   brakeForce: 9.2,
-  linearDrag: 0.38,
-  maxSpeed: 9.5,
+  linearDrag: 0.28,
+  maxSpeed: 12.4,
   yawDamping: 0.34,
   steerResponse: 0.00065,
   launchAssistDuration: 10,
-  launchDriveForceScale: 1.14,
+  launchDriveForceScale: 1.28,
   launchSteerScale: 1.08,
   launchYawDampingScale: 1.15,
 };
@@ -302,7 +302,7 @@ const levelConfigs = [
       laneColor: 0x5ce8ff,
       edgeColor: 0xff4eb8,
       asphalt: 0x34383b,
-      targetSpeed: 7.2,
+      targetSpeed: 9.4,
       driftAngle: THREE.MathUtils.degToRad(59),
       spawn: [-28, -10],
       spawnLookAt: [-20, -22],
@@ -358,7 +358,7 @@ const levelConfigs = [
       laneColor: 0xf7f0d2,
       edgeColor: 0xffdd67,
       asphalt: 0x3a3d3a,
-      targetSpeed: 6.45,
+      targetSpeed: 8.7,
       driftAngle: THREE.MathUtils.degToRad(64),
       spawnIndex: 6,
       resetEvery: 4,
@@ -373,7 +373,7 @@ const levelConfigs = [
       ],
     },
     handling: {
-      driveForceScale: 0.96,
+      driveForceScale: 1.08,
       frontGripScale: 0.92,
       rearGripScale: 0.72,
       frontCorneringScale: 0.92,
@@ -381,7 +381,7 @@ const levelConfigs = [
       rearPowerGrip: 1.25,
       yawDampingScale: 0.84,
       dragScale: 0.86,
-      maxSpeedScale: 0.95,
+      maxSpeedScale: 1.02,
       steerScale: 0.94,
     },
     scoring: {
@@ -414,7 +414,7 @@ const levelConfigs = [
       laneColor: 0xffdd67,
       edgeColor: 0x5ce8ff,
       asphalt: 0x333635,
-      targetSpeed: 7.05,
+      targetSpeed: 9.6,
       driftAngle: THREE.MathUtils.degToRad(61),
       spawnIndex: 0,
       resetEvery: 3,
@@ -428,7 +428,7 @@ const levelConfigs = [
       ],
     },
     handling: {
-      driveForceScale: 1.02,
+      driveForceScale: 1.12,
       frontGripScale: 1,
       rearGripScale: 0.96,
       frontCorneringScale: 1,
@@ -436,7 +436,7 @@ const levelConfigs = [
       rearPowerGrip: 1.58,
       yawDampingScale: 0.98,
       dragScale: 0.96,
-      maxSpeedScale: 1.05,
+      maxSpeedScale: 1.12,
       steerScale: 1.02,
     },
     scoring: {
@@ -1015,6 +1015,7 @@ function createRoadEdges(parent, road, visual) {
       const direction = b.clone().sub(a);
       const length = direction.length();
       if (length < 0.05) continue;
+      if (isRoadEdgeBlockingNearbyRoad(road, center, i)) continue;
       direction.normalize();
       const rotation = -Math.atan2(direction.z, direction.x);
       const rail = new THREE.Mesh(new THREE.BoxGeometry(length, 0.46, 0.22), railMaterial);
@@ -1037,6 +1038,26 @@ function createRoadEdges(parent, road, visual) {
       }
     }
   }
+}
+
+function isRoadEdgeBlockingNearbyRoad(road, center, sourceIndex) {
+  const neighborWindow = 10;
+  for (let i = 0; i < road.samples.length; i += 1) {
+    const cyclicDistance = Math.min(
+      Math.abs(i - sourceIndex),
+      road.samples.length - Math.abs(i - sourceIndex),
+    );
+    if (cyclicDistance <= neighborWindow) continue;
+
+    const sample = road.samples[i];
+    const dx = center.x - sample.position.x;
+    const dz = center.z - sample.position.z;
+    const distance = Math.hypot(dx, dz);
+    const clearWidth = sample.width / 2 + road.config.shoulderWidth + 0.65;
+    if (distance < clearWidth) return true;
+  }
+
+  return false;
 }
 
 function createScoringZoneMarkers(parent, road, config) {
@@ -2574,8 +2595,17 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
   const narrowView = window.innerWidth < 560;
   const basis = getVehicleBasis(vehicle.yaw);
   const zoom = state.cameraZoom;
-  const forwardCameraOffset = basis.forward.clone().multiplyScalar(narrowView ? -8.8 : -5.6);
-  const sideCameraOffset = basis.right.clone().multiplyScalar(narrowView ? -5.2 : -7.2);
+  const speedFactor = THREE.MathUtils.clamp(speed / 12, 0, 1);
+  const targetFov = getResponsiveFov() + speedFactor * (narrowView ? 8 : 13);
+  camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.pow(0.02, delta));
+  camera.updateProjectionMatrix();
+
+  const forwardCameraOffset = basis.forward.clone().multiplyScalar(
+    narrowView ? -8.8 - speedFactor * 2.2 : -5.8 - speedFactor * 4.8,
+  );
+  const sideCameraOffset = basis.right.clone().multiplyScalar(
+    narrowView ? -5.2 - speedFactor * 1.1 : -7.2 - speedFactor * 1.6,
+  );
   const orbitOffset = forwardCameraOffset
     .add(sideCameraOffset)
     .applyAxisAngle(new THREE.Vector3(0, 1, 0), state.cameraAngle)
@@ -2583,7 +2613,7 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
   const cameraTarget = lookAt
     .clone()
     .add(orbitOffset)
-    .add(new THREE.Vector3(0, (narrowView ? 7.6 : 5.3) * zoom * state.cameraHeight, 0));
+    .add(new THREE.Vector3(0, (narrowView ? 7.6 : 5.3 - speedFactor * 1.35) * zoom * state.cameraHeight, 0));
   const shake = state.feedback.shake;
   const shakeOffset = new THREE.Vector3();
   if (shake > 0.001) {
@@ -2599,7 +2629,7 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
   camera.position.lerp(cameraTarget, 1 - Math.pow(0.001, delta));
   camera.lookAt(lookAt.addScaledVector(shakeOffset, 0.45));
 
-  speedEl.textContent = `${Math.round(speed * 10.8)} km/h`;
+  speedEl.textContent = `${Math.round(speed * 13.8)} km/h`;
   angleEl.textContent = `${Math.round(speed < runConfig.angleDisplaySpeed ? 0 : Math.abs(slipAngle) * THREE.MathUtils.RAD2DEG)} deg`;
   return telemetry;
 }
@@ -2946,7 +2976,9 @@ function updateFeedbackState(delta, telemetry) {
 
 function updateFeedbackVisuals(delta) {
   const intensity = state.feedback.driftIntensity;
+  const speedIntensity = THREE.MathUtils.clamp((state.vehicle.velocity.length() - 5.4) / 6.2, 0, 1);
   driftFeedbackEl.style.setProperty('--drift-intensity', intensity.toFixed(3));
+  driftFeedbackEl.style.setProperty('--speed-intensity', speedIntensity.toFixed(3));
   driftFeedbackEl.classList.toggle('is-active', intensity > 0.34);
   driftFeedbackEl.classList.toggle('is-strong', intensity > 0.68);
   hud.classList.toggle('is-drifting', state.run.driftValid);
