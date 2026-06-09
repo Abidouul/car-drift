@@ -13,6 +13,7 @@ const bestScoreEl = document.querySelector('#best-score');
 const speedEl = document.querySelector('#speed');
 const angleEl = document.querySelector('#angle');
 const statusEl = document.querySelector('#status');
+const pauseButton = document.querySelector('#pause-button');
 const restartButton = document.querySelector('#restart-button');
 const modeToggle = document.querySelector('#mode-toggle');
 const cameraZoom = document.querySelector('#camera-zoom');
@@ -26,6 +27,10 @@ const resultBestScoreEl = document.querySelector('#result-best-score');
 const resultRestartButton = document.querySelector('#result-restart');
 const resultLevelSelectButton = document.querySelector('#result-level-select');
 const resultMainMenuButton = document.querySelector('#result-main-menu');
+const resumeButton = document.querySelector('#resume-button');
+const pauseRestartButton = document.querySelector('#pause-restart');
+const pauseLevelSelectButton = document.querySelector('#pause-level-select');
+const pauseMainMenuButton = document.querySelector('#pause-main-menu');
 const graphicsPresetSelect = document.querySelector('#graphics-preset');
 const resolutionScaleInput = document.querySelector('#resolution-scale');
 const resolutionValueEl = document.querySelector('#resolution-value');
@@ -38,6 +43,7 @@ const resetBindingsButton = document.querySelector('#reset-bindings');
 const panels = {
   main: document.querySelector('[data-panel="main"]'),
   levels: document.querySelector('[data-panel="levels"]'),
+  pause: document.querySelector('[data-panel="pause"]'),
   options: document.querySelector('[data-panel="options"]'),
   quit: document.querySelector('[data-panel="quit"]'),
   result: document.querySelector('[data-panel="result"]'),
@@ -601,6 +607,10 @@ function setupEventListeners() {
     quitGame();
   });
 
+  pauseButton.addEventListener('click', () => {
+    showPauseMenu();
+  });
+
   restartButton.addEventListener('click', () => {
     restartCurrentRun();
   });
@@ -614,6 +624,22 @@ function setupEventListeners() {
   });
 
   resultMainMenuButton.addEventListener('click', () => {
+    showMainMenu();
+  });
+
+  resumeButton.addEventListener('click', () => {
+    resumeCurrentRun();
+  });
+
+  pauseRestartButton.addEventListener('click', () => {
+    restartCurrentRun();
+  });
+
+  pauseLevelSelectButton.addEventListener('click', () => {
+    showLevelSelect();
+  });
+
+  pauseMainMenuButton.addEventListener('click', () => {
     showMainMenu();
   });
 
@@ -704,7 +730,15 @@ function setupEventListeners() {
     }
 
     if (event.key === 'Escape') {
-      showMainMenu();
+      if (state.screen === 'playing' && state.paused) {
+        resumeCurrentRun();
+      } else if (state.screen === 'playing') {
+        showPauseMenu();
+      } else if (state.screen === 'menu' && !panels.main.hidden) {
+        showMainMenu();
+      } else if (state.screen === 'menu') {
+        showMainMenu();
+      }
       return;
     }
 
@@ -2759,6 +2793,29 @@ function startLevel(levelIndex) {
 function restartCurrentRun() {
   if (state.screen !== 'playing' && state.screen !== 'result') return;
   startLevel(state.level);
+}
+
+function showPauseMenu() {
+  if (state.screen !== 'playing' || state.run.ended) return;
+  state.paused = true;
+  state.bindingTarget = null;
+  state.pointer.active = false;
+  clearMovementInput();
+  updateStatusText();
+  hud.hidden = false;
+  menuOverlay.hidden = false;
+  showMenuPanel('pause');
+}
+
+function resumeCurrentRun() {
+  if (state.screen !== 'playing' || state.run.ended) return;
+  unlockAudio();
+  state.paused = false;
+  state.bindingTarget = null;
+  clearMovementInput();
+  updateStatusText();
+  hud.hidden = false;
+  menuOverlay.hidden = true;
 }
 
 function showLevelSelect() {

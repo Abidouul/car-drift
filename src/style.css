@@ -295,6 +295,7 @@ select {
     linear-gradient(90deg, rgb(4 6 7 / 82%), rgb(4 6 7 / 42%) 48%, rgb(4 6 7 / 6%)),
     linear-gradient(0deg, rgb(4 6 7 / 38%), transparent 45%);
   pointer-events: auto;
+  z-index: 6;
 }
 
 .menu-overlay[hidden] {

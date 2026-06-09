@@ -43,6 +43,7 @@
           </div>
         </dl>
         <div class="controls">
+          <button id="pause-button" type="button">Pause</button>
           <button id="restart-button" type="button">Restart run</button>
           <button id="mode-toggle" type="button">Play manual</button>
           <label for="camera-zoom">
@@ -84,6 +85,17 @@
             </button>
           </div>
           <button class="secondary-button" type="button" data-back-menu>Back</button>
+        </div>
+
+        <div class="menu-panel" data-panel="pause" hidden>
+          <p class="eyebrow">Paused</p>
+          <h2>Paused</h2>
+          <div class="menu-actions">
+            <button id="resume-button" type="button">Resume</button>
+            <button id="pause-restart" class="secondary-button" type="button">Restart</button>
+            <button id="pause-level-select" class="secondary-button" type="button">Level select</button>
+            <button id="pause-main-menu" class="secondary-button" type="button">Main menu</button>
+          </div>
         </div>
 
         <div class="menu-panel" data-panel="options" hidden>
