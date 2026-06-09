@@ -22,6 +22,10 @@ Did like 2-4 prompts with Conductor and here are all the implementations that I 
 - Added Score like Drift Points.
 - Added Drift Multiplier. 
 - Added a Timer.
+- Modified Maps and made them more playable while copying games like CarX Drift Racing.
+- Added Sense of speed because game felt Sluggish and slow.
+- Added Object collisions.
+- ...
 
 Implementations that I wish to do in the future:
 
