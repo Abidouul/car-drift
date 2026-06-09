@@ -39,15 +39,34 @@ body {
 
 .drift-feedback {
   --drift-intensity: 0;
+  --speed-intensity: 0;
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: calc(var(--drift-intensity) * 0.72);
+  opacity: calc(var(--drift-intensity) * 0.72 + var(--speed-intensity) * 0.28);
   background:
     radial-gradient(circle at 50% 56%, transparent 42%, rgb(255 221 103 / 11%) 72%, rgb(255 99 44 / 20%)),
     linear-gradient(90deg, rgb(92 232 255 / 0%), rgb(92 232 255 / 9%) 50%, rgb(92 232 255 / 0%));
   mix-blend-mode: screen;
   transition: opacity 120ms ease;
+}
+
+.drift-feedback::before {
+  position: absolute;
+  inset: -16%;
+  background:
+    repeating-linear-gradient(
+      112deg,
+      rgb(255 255 255 / 0%) 0,
+      rgb(255 255 255 / 0%) 34px,
+      rgb(92 232 255 / 18%) 35px,
+      rgb(92 232 255 / 0%) 39px
+    ),
+    radial-gradient(circle at 50% 50%, transparent 48%, rgb(0 0 0 / 52%) 100%);
+  content: "";
+  opacity: calc(var(--speed-intensity) * 0.55);
+  transform: translateX(calc(var(--speed-intensity) * -28px));
+  mix-blend-mode: screen;
 }
 
 .drift-feedback::after {
