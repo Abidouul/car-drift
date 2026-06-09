@@ -197,6 +197,8 @@ let car;
 let smokeSystem;
 let skidSystem;
 let audioEngine;
+let activeColliders = [];
+let activeRoad;
 
 const state = {
   elapsed: 0,
@@ -233,6 +235,7 @@ const state = {
   feedback: {
     driftIntensity: 0,
     shake: 0,
+    impact: 0,
     popupBank: 0,
     popupCooldown: 0,
     comboPulse: 0,
@@ -256,6 +259,8 @@ const state = {
     rearSlip: 0,
     frontSlip: 0,
     lateralG: 0,
+    offRoadTime: 0,
+    roadFrame: null,
   },
 };
 
@@ -276,14 +281,40 @@ const sim = {
   rearCornering: 4.8,
 };
 
+const carCollisionSamples = [
+  { x: 0, z: -1.55, radius: 0.78 },
+  { x: 0, z: 0, radius: 0.92 },
+  { x: 0, z: 1.45, radius: 0.78 },
+];
+
 const levelConfigs = [
   {
-    name: 'Dockyard Ring',
-    route: {
-      targetRadius: 5.45,
-      targetSpeed: 5.95,
-      driftAngle: THREE.MathUtils.degToRad(61),
-      guideWidth: 0.1,
+    name: 'Urban Night Loop',
+    road: {
+      points: [
+        [-30, -8], [-20, -22], [-2, -24], [14, -18],
+        [26, -6], [22, 8], [8, 12], [-4, 8],
+        [-14, 16], [-28, 12], [-34, 2], [-30, -8],
+      ],
+      closed: true,
+      width: 7.5,
+      shoulderWidth: 0.75,
+      laneColor: 0x5ce8ff,
+      edgeColor: 0xff4eb8,
+      asphalt: 0x34383b,
+      targetSpeed: 7.2,
+      driftAngle: THREE.MathUtils.degToRad(59),
+      spawn: [-28, -10],
+      spawnLookAt: [-20, -22],
+      resetEvery: 3,
+      extraWidths: [
+        { pointIndex: 8, radius: 8.5, width: 10 },
+      ],
+      scoringZones: [
+        { pointIndex: 2, radius: 6.5, multiplier: 1.2, label: 'Entry sweeper' },
+        { pointIndex: 5, radius: 6, multiplier: 1.3, label: 'Underpass exit' },
+        { pointIndex: 8, radius: 7, multiplier: 1.15, label: 'Parking pad' },
+      ],
     },
     handling: {
       driveForceScale: 1,
@@ -301,23 +332,45 @@ const levelConfigs = [
       driftRewardMultiplier: 1,
     },
     visual: {
-      background: 0x07090a,
-      fog: 0x07090a,
+      background: 0x06070c,
+      fog: 0x070713,
       fogDensity: 0.022,
-      ground: 0x20261f,
-      gridMain: 0x5d6c62,
-      guide: 0xb9c6a9,
-      center: 0xffdf70,
+      ground: 0x1b2223,
+      gridMain: 0x2b555d,
+      terrain: 0x182427,
+      guardrail: 0x8fa7ad,
+      sceneryAccent: 0xff4eb8,
     },
-    props: createDockyardProps,
+    props: createUrbanNightProps,
   },
   {
-    name: 'Frost Terminal',
-    route: {
-      targetRadius: 5.15,
-      targetSpeed: 5.65,
-      driftAngle: THREE.MathUtils.degToRad(66),
-      guideWidth: 0.14,
+    name: 'Mountain Touge',
+    road: {
+      points: [
+        [-26, 20], [-14, 24], [-4, 18], [-10, 8],
+        [-26, 4], [-30, -10], [-16, -20], [0, -16],
+        [10, -6], [4, 6], [14, 18], [28, 14],
+        [30, 0], [18, -10], [6, -2], [-4, 10],
+      ],
+      closed: true,
+      width: 6.4,
+      shoulderWidth: 0.65,
+      laneColor: 0xf7f0d2,
+      edgeColor: 0xffdd67,
+      asphalt: 0x3a3d3a,
+      targetSpeed: 6.45,
+      driftAngle: THREE.MathUtils.degToRad(64),
+      spawnIndex: 6,
+      resetEvery: 4,
+      extraWidths: [
+        { pointIndex: 4, radius: 6, width: 8.5 },
+        { pointIndex: 12, radius: 6.5, width: 8.5 },
+      ],
+      scoringZones: [
+        { pointIndex: 4, radius: 6.2, multiplier: 1.35, label: 'Downhill hairpin' },
+        { pointIndex: 8, radius: 6, multiplier: 1.25, label: 'Transition ridge' },
+        { pointIndex: 13, radius: 6.2, multiplier: 1.35, label: 'Final switchback' },
+      ],
     },
     handling: {
       driveForceScale: 0.96,
@@ -335,15 +388,71 @@ const levelConfigs = [
       driftRewardMultiplier: 1.25,
     },
     visual: {
-      background: 0x071018,
-      fog: 0x071018,
-      fogDensity: 0.032,
-      ground: 0x27343a,
-      gridMain: 0x7ea8b4,
-      guide: 0xa9d9ee,
-      center: 0x9fe7ff,
+      background: 0x0b1012,
+      fog: 0x0b1012,
+      fogDensity: 0.028,
+      ground: 0x263525,
+      gridMain: 0x466c52,
+      terrain: 0x2f4a30,
+      guardrail: 0xb9c2ba,
+      sceneryAccent: 0xd3b36b,
     },
-    props: createFrostTerminalProps,
+    props: createMountainTougeProps,
+  },
+  {
+    name: 'Industrial Dock Route',
+    road: {
+      points: [
+        [-32, -18], [-16, -24], [8, -22], [26, -12],
+        [30, 4], [16, 14], [0, 10], [-10, 0],
+        [-2, -8], [12, -2], [20, 10], [8, 24],
+        [-18, 22], [-34, 8], [-32, -18],
+      ],
+      closed: true,
+      width: 8,
+      shoulderWidth: 0.8,
+      laneColor: 0xffdd67,
+      edgeColor: 0x5ce8ff,
+      asphalt: 0x333635,
+      targetSpeed: 7.05,
+      driftAngle: THREE.MathUtils.degToRad(61),
+      spawnIndex: 0,
+      resetEvery: 3,
+      extraWidths: [
+        { pointIndex: 11, radius: 8.5, width: 12 },
+      ],
+      scoringZones: [
+        { pointIndex: 2, radius: 7, multiplier: 1.22, label: 'Dock entry' },
+        { pointIndex: 7, radius: 5.5, multiplier: 1.4, label: 'Container chicane' },
+        { pointIndex: 11, radius: 8, multiplier: 1.12, label: 'Practice pad' },
+      ],
+    },
+    handling: {
+      driveForceScale: 1.02,
+      frontGripScale: 1,
+      rearGripScale: 0.96,
+      frontCorneringScale: 1,
+      rearCorneringScale: 0.96,
+      rearPowerGrip: 1.58,
+      yawDampingScale: 0.98,
+      dragScale: 0.96,
+      maxSpeedScale: 1.05,
+      steerScale: 1.02,
+    },
+    scoring: {
+      driftRewardMultiplier: 1.15,
+    },
+    visual: {
+      background: 0x07090a,
+      fog: 0x07090a,
+      fogDensity: 0.024,
+      ground: 0x20251f,
+      gridMain: 0x657166,
+      terrain: 0x20261f,
+      guardrail: 0xaeb7b4,
+      sceneryAccent: 0xffc067,
+    },
+    props: createIndustrialDockProps,
   },
 ];
 
@@ -359,7 +468,7 @@ function initializeGame() {
   scene.background = new THREE.Color(0x07090a);
   scene.fog = new THREE.FogExp2(0x07090a, 0.022);
 
-  camera = new THREE.PerspectiveCamera(getResponsiveFov(), window.innerWidth / window.innerHeight, 0.1, 180);
+  camera = new THREE.PerspectiveCamera(getResponsiveFov(), window.innerWidth / window.innerHeight, 0.1, 260);
   camera.position.set(-9, 7, 12);
 
   try {
@@ -630,11 +739,11 @@ function setupLights() {
   key.castShadow = true;
   key.shadow.mapSize.set(getShadowQualitySettings().mapSize, getShadowQualitySettings().mapSize);
   key.shadow.camera.near = 1;
-  key.shadow.camera.far = 48;
-  key.shadow.camera.left = -20;
-  key.shadow.camera.right = 20;
-  key.shadow.camera.top = 20;
-  key.shadow.camera.bottom = -20;
+  key.shadow.camera.far = 96;
+  key.shadow.camera.left = -48;
+  key.shadow.camera.right = 48;
+  key.shadow.camera.top = 48;
+  key.shadow.camera.bottom = -48;
   scene.add(key);
   keyLight = key;
 
@@ -654,7 +763,7 @@ function createGround() {
   world.add(levelDecor);
 
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(96, 96),
+    new THREE.PlaneGeometry(164, 164),
     new THREE.MeshStandardMaterial({
       color: 0x20261f,
       roughness: 0.9,
@@ -665,168 +774,849 @@ function createGround() {
   ground.receiveShadow = true;
   world.add(ground);
 
-  const grid = new THREE.GridHelper(86, 86, 0x5d6c62, 0x323c35);
+  const grid = new THREE.GridHelper(154, 154, 0x5d6c62, 0x323c35);
   grid.position.y = 0.012;
   grid.material.transparent = true;
   grid.material.opacity = 0.2;
   world.add(grid);
 
-  const initialRoute = levelConfigs[0].route;
-  const donutGuide = new THREE.Mesh(
-    new THREE.RingGeometry(
-      initialRoute.targetRadius - initialRoute.guideWidth / 2,
-      initialRoute.targetRadius + initialRoute.guideWidth / 2,
-      160,
-    ),
-    new THREE.MeshBasicMaterial({
-      color: 0xb9c6a9,
-      transparent: true,
-      opacity: 0.07,
-      side: THREE.DoubleSide,
-    }),
-  );
-  donutGuide.rotation.x = -Math.PI / 2;
-  donutGuide.position.y = 0.021;
-  world.add(donutGuide);
-
-  const inner = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.15, 0.15, 0.08, 36),
-    new THREE.MeshStandardMaterial({
-      color: 0xffdf70,
-      emissive: 0x906314,
-      emissiveIntensity: 0.45,
-      roughness: 0.46,
-    }),
-  );
-  inner.position.y = 0.05;
-  inner.castShadow = true;
-  world.add(inner);
-
   return {
     setLevel(index) {
       const level = getLevelConfig(index);
-      const { route, visual } = level;
+      const { visual } = level;
       scene.background = new THREE.Color(visual.background);
       scene.fog.color.setHex(visual.fog);
       state.levelFogDensity = visual.fogDensity;
       scene.fog.density = getCurrentLevelFogDensity();
       ground.material.color.setHex(visual.ground);
       grid.material.color?.setHex(visual.gridMain);
-      donutGuide.material.color.setHex(visual.guide);
-      donutGuide.geometry.dispose();
-      donutGuide.geometry = new THREE.RingGeometry(
-        route.targetRadius - route.guideWidth / 2,
-        route.targetRadius + route.guideWidth / 2,
-        160,
-      );
-      donutGuide.rotation.x = -Math.PI / 2;
-      inner.material.color.setHex(visual.center);
-      inner.material.emissive.setHex(visual.center);
 
       disposeObjectTree(levelDecor);
       levelDecor.clear();
-      level.props(levelDecor);
+      activeColliders = [];
+      activeRoad = createRoadLayout(levelDecor, level);
+      level.props(levelDecor, activeRoad);
       applyGraphicsSettings();
     },
   };
 }
 
-function createDockyardProps(parent) {
-  const containerColors = [0x1f6f8b, 0xa43f2b, 0xd19d32, 0x38454d];
-  const containerGeometry = new THREE.BoxGeometry(2.8, 1.1, 1.15);
-  const containerMaterials = containerColors.map((color) => new THREE.MeshStandardMaterial({
-    color,
-    roughness: 0.74,
-    metalness: 0.18,
+function createRoadLayout(parent, level) {
+  const road = buildRoadData(level.road);
+  parent.add(createRoadMesh(road, level.road.asphalt));
+  createRoadShoulders(parent, road, level.visual);
+  createRoadMarkings(parent, road, level.road);
+  createRoadEdges(parent, road, level.visual);
+  createScoringZoneMarkers(parent, road, level.road);
+  return road;
+}
+
+function buildRoadData(config) {
+  const rawPoints = normalizeRoadPoints(config.points, config.closed);
+  const curvePoints = rawPoints.map(([x, z]) => new THREE.Vector3(x, 0, z));
+  const curve = new THREE.CatmullRomCurve3(curvePoints, config.closed, 'catmullrom', 0.42);
+  const sampleCount = config.samples ?? Math.max(144, curvePoints.length * 16);
+  const samples = [];
+
+  for (let i = 0; i <= sampleCount; i += 1) {
+    const t = config.closed ? (i % sampleCount) / sampleCount : i / sampleCount;
+    const position = curve.getPointAt(t);
+    const tangent = curve.getTangentAt(t).setY(0);
+    if (tangent.lengthSq() < 0.0001) tangent.set(0, 0, -1);
+    tangent.normalize();
+    const normal = new THREE.Vector3(-tangent.z, 0, tangent.x);
+    const width = getRoadWidthAt(position, config, rawPoints);
+    samples.push({ position, tangent, normal, width, t, index: i });
+  }
+
+  const resetPoints = createResetPoints(config, curve, rawPoints);
+  const scoringZones = (config.scoringZones ?? []).map((zone) => ({
+    ...zone,
+    center: pointFromRoadIndex(rawPoints, zone.pointIndex),
   }));
-  const coneGeometry = new THREE.ConeGeometry(0.18, 0.52, 14);
-  const coneMaterial = new THREE.MeshStandardMaterial({
-    color: 0xff7a1a,
-    roughness: 0.62,
+  const spawn = getRoadSpawn(config, curve);
+
+  return {
+    config,
+    curve,
+    points: rawPoints,
+    samples,
+    sampleCount,
+    resetPoints,
+    scoringZones,
+    spawn,
+    maxWidth: Math.max(...samples.map((sample) => sample.width)),
+  };
+}
+
+function normalizeRoadPoints(points, closed) {
+  const normalized = points.map(([x, z]) => [x, z]);
+  if (!closed || normalized.length < 2) return normalized;
+  const first = normalized[0];
+  const last = normalized[normalized.length - 1];
+  if (Math.hypot(first[0] - last[0], first[1] - last[1]) < 0.001) normalized.pop();
+  return normalized;
+}
+
+function getRoadWidthAt(position, config, roadPoints) {
+  let width = config.width;
+  for (const pad of config.extraWidths ?? []) {
+    const center = pointFromRoadIndex(roadPoints, pad.pointIndex);
+    const distance = Math.hypot(position.x - center.x, position.z - center.z);
+    if (distance >= pad.radius) continue;
+    const influence = 1 - THREE.MathUtils.smoothstep(distance / pad.radius, 0, 1);
+    width = Math.max(width, THREE.MathUtils.lerp(config.width, pad.width, influence));
+  }
+  return width;
+}
+
+function pointFromRoadIndex(roadPoints, index) {
+  const point = roadPoints[((index % roadPoints.length) + roadPoints.length) % roadPoints.length];
+  return new THREE.Vector3(point[0], 0, point[1]);
+}
+
+function getRoadSpawn(config, curve) {
+  if (!config.spawn || !config.spawnLookAt) {
+    const index = config.spawnIndex ?? 0;
+    const point = curve.points?.[index % curve.points.length]?.clone()
+      ?? new THREE.Vector3(config.points[0][0], 0, config.points[0][1]);
+    const next = curve.points?.[(index + 1) % curve.points.length]?.clone()
+      ?? new THREE.Vector3(config.points[1][0], 0, config.points[1][1]);
+    const tangent = next.sub(point).setY(0);
+    if (tangent.lengthSq() < 0.001) tangent.copy(curve.getTangentAt(0));
+    tangent.normalize();
+    return {
+      position: point,
+      yaw: yawFromForward(tangent),
+      tangent,
+    };
+  }
+
+  const spawnPoint = new THREE.Vector3(config.spawn[0], 0, config.spawn[1]);
+  const lookAt = new THREE.Vector3(config.spawnLookAt[0], 0, config.spawnLookAt[1]);
+  const tangent = lookAt.clone().sub(spawnPoint);
+  if (tangent.lengthSq() < 0.001) tangent.copy(curve.getTangentAt(0));
+  tangent.y = 0;
+  tangent.normalize();
+  return {
+    position: spawnPoint,
+    yaw: yawFromForward(tangent),
+    tangent,
+  };
+}
+
+function createRoadMesh(road, asphaltColor) {
+  const vertices = [];
+  const indices = [];
+  const colors = [];
+  const color = new THREE.Color(asphaltColor);
+
+  for (const sample of road.samples) {
+    const half = sample.width / 2;
+    const left = sample.position.clone().addScaledVector(sample.normal, half);
+    const right = sample.position.clone().addScaledVector(sample.normal, -half);
+    vertices.push(left.x, 0.034, left.z, right.x, 0.034, right.z);
+    for (let side = 0; side < 2; side += 1) colors.push(color.r, color.g, color.b);
+  }
+
+  for (let i = 0; i < road.samples.length - 1; i += 1) {
+    const vertex = i * 2;
+    indices.push(vertex, vertex + 2, vertex + 1, vertex + 1, vertex + 2, vertex + 3);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.78,
+    metalness: 0.02,
+    vertexColors: true,
   });
-  const poleGeometry = new THREE.CylinderGeometry(0.07, 0.07, 4.2, 10);
-  const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x2c3334, roughness: 0.5, metalness: 0.2 });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.receiveShadow = true;
+  return mesh;
+}
 
-  for (let i = 0; i < 10; i += 1) {
-    const stack = new THREE.Group();
-    const box = new THREE.Mesh(containerGeometry, containerMaterials[i % containerMaterials.length]);
-    box.castShadow = true;
-    box.receiveShadow = true;
-    stack.add(box);
-    const angle = (i / 10) * Math.PI * 2;
-    const radius = 14 + (i % 2) * 4;
-    stack.position.set(Math.cos(angle) * radius, 0.55, Math.sin(angle) * radius);
-    stack.rotation.y = -angle + Math.PI / 2 + (i % 3) * 0.12;
-    parent.add(stack);
-  }
-
-  for (let i = 0; i < 18; i += 1) {
-    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
-    const angle = (i / 18) * Math.PI * 2;
-    cone.position.set(Math.cos(angle) * 7.2, 0.26, Math.sin(angle) * 7.2);
-    cone.castShadow = true;
-    parent.add(cone);
-  }
-
-  for (let i = 0; i < 6; i += 1) {
-    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
-    const lamp = new THREE.PointLight(0xffc067, 18, 12, 2.2);
-    const angle = (i / 6) * Math.PI * 2 + 0.35;
-    pole.position.set(Math.cos(angle) * 12, 2.1, Math.sin(angle) * 12);
-    lamp.position.copy(pole.position).add(new THREE.Vector3(0, 2.1, 0));
-    lamp.userData.levelLight = true;
-    pole.castShadow = true;
-    parent.add(pole, lamp);
+function createRoadShoulders(parent, road, visual) {
+  const material = new THREE.MeshStandardMaterial({
+    color: visual.terrain,
+    roughness: 0.94,
+    metalness: 0,
+  });
+  for (let side = -1; side <= 1; side += 2) {
+    const vertices = [];
+    const indices = [];
+    for (const sample of road.samples) {
+      const inner = sample.position.clone().addScaledVector(sample.normal, side * sample.width / 2);
+      const outer = sample.position.clone().addScaledVector(
+        sample.normal,
+        side * (sample.width / 2 + road.config.shoulderWidth),
+      );
+      vertices.push(inner.x, 0.026, inner.z, outer.x, 0.026, outer.z);
+    }
+    for (let i = 0; i < road.samples.length - 1; i += 1) {
+      const vertex = i * 2;
+      indices.push(vertex, vertex + 2, vertex + 1, vertex + 1, vertex + 2, vertex + 3);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const shoulder = new THREE.Mesh(geometry, material);
+    shoulder.receiveShadow = true;
+    parent.add(shoulder);
   }
 }
 
-function createFrostTerminalProps(parent) {
-  const bankGeometry = new THREE.BoxGeometry(1, 1, 1);
-  const bankMaterial = new THREE.MeshStandardMaterial({
-    color: 0xd9eef1,
-    roughness: 0.96,
-    metalness: 0,
+function createRoadMarkings(parent, road, config) {
+  const centerMaterial = new THREE.MeshBasicMaterial({ color: config.laneColor });
+  const edgeMaterial = new THREE.MeshBasicMaterial({ color: config.edgeColor });
+  const dashLength = 1.45;
+  const dashWidth = 0.12;
+
+  for (let i = 0; i < road.samples.length - 5; i += 6) {
+    const sample = road.samples[i];
+    addFlatRoadBox(parent, sample.position, sample.tangent, dashLength, dashWidth, 0.052, centerMaterial);
+  }
+
+  for (let i = 0; i < road.samples.length - 4; i += 4) {
+    const sample = road.samples[i];
+    for (const side of [-1, 1]) {
+      const edge = sample.position.clone().addScaledVector(sample.normal, side * (sample.width / 2 - 0.32));
+      addFlatRoadBox(parent, edge, sample.tangent, 1.2, 0.08, 0.054, edgeMaterial);
+    }
+  }
+}
+
+function createRoadEdges(parent, road, visual) {
+  const railMaterial = new THREE.MeshStandardMaterial({
+    color: visual.guardrail,
+    roughness: 0.45,
+    metalness: 0.5,
   });
-  const barrierGeometry = new THREE.BoxGeometry(2.2, 0.72, 0.32);
-  const barrierMaterials = [
-    new THREE.MeshStandardMaterial({ color: 0xf0f7f8, roughness: 0.78 }),
-    new THREE.MeshStandardMaterial({ color: 0x74a6b8, roughness: 0.78 }),
+  const postMaterial = new THREE.MeshStandardMaterial({
+    color: 0x252a2c,
+    roughness: 0.62,
+    metalness: 0.28,
+  });
+
+  for (let i = 0; i < road.samples.length - 2; i += 2) {
+    const current = road.samples[i];
+    const next = road.samples[Math.min(i + 2, road.samples.length - 1)];
+    for (const side of [-1, 1]) {
+      const offsetA = current.width / 2 + road.config.shoulderWidth + 0.28;
+      const offsetB = next.width / 2 + road.config.shoulderWidth + 0.28;
+      const a = current.position.clone().addScaledVector(current.normal, side * offsetA);
+      const b = next.position.clone().addScaledVector(next.normal, side * offsetB);
+      const center = a.clone().add(b).multiplyScalar(0.5);
+      const direction = b.clone().sub(a);
+      const length = direction.length();
+      if (length < 0.05) continue;
+      direction.normalize();
+      const rotation = -Math.atan2(direction.z, direction.x);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(length, 0.46, 0.22), railMaterial);
+      rail.position.set(center.x, 0.38, center.z);
+      rail.rotation.y = rotation;
+      rail.castShadow = true;
+      rail.receiveShadow = true;
+      parent.add(rail);
+      registerBoxCollider(center.x, center.z, length, 0.44, rotation, {
+        bounce: 0.16,
+        friction: 0.74,
+        kind: 'guardrail',
+      });
+
+      if (i % 8 === 0) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.72, 0.16), postMaterial);
+        post.position.set(a.x, 0.36, a.z);
+        post.castShadow = true;
+        parent.add(post);
+      }
+    }
+  }
+}
+
+function createScoringZoneMarkers(parent, road, config) {
+  const markerMaterial = new THREE.MeshStandardMaterial({
+    color: config.edgeColor,
+    emissive: config.edgeColor,
+    emissiveIntensity: 0.42,
+    roughness: 0.38,
+  });
+  const coneGeometry = new THREE.ConeGeometry(0.2, 0.62, 12);
+
+  for (const zone of road.scoringZones) {
+    const frame = getRoadFrame(zone.center, road);
+    const side = zone.pointIndex % 2 === 0 ? 1 : -1;
+    const markerBase = frame.nearest
+      .clone()
+      .addScaledVector(frame.normal, side * (frame.width / 2 - 0.7));
+
+    for (let i = 0; i < 3; i += 1) {
+      const marker = new THREE.Mesh(coneGeometry, markerMaterial);
+      marker.position.copy(markerBase).addScaledVector(frame.tangent, (i - 1) * 0.95);
+      marker.position.y = 0.31;
+      marker.castShadow = true;
+      parent.add(marker);
+    }
+  }
+}
+
+function addFlatRoadBox(parent, center, tangent, length, width, y, material) {
+  const direction = tangent.clone().setY(0);
+  if (direction.lengthSq() < 0.001) direction.set(1, 0, 0);
+  direction.normalize();
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(length, 0.012, width), material);
+  stripe.position.set(center.x, y, center.z);
+  stripe.rotation.y = -Math.atan2(direction.z, direction.x);
+  stripe.renderOrder = 2;
+  parent.add(stripe);
+  return stripe;
+}
+
+function createResetPoints(config, curve, roadPoints) {
+  const points = [];
+  const step = Math.max(1, config.resetEvery ?? 3);
+  for (let i = 0; i < roadPoints.length; i += step) {
+    const point = pointFromRoadIndex(roadPoints, i);
+    const next = pointFromRoadIndex(roadPoints, i + 1);
+    const tangent = next.sub(point).setY(0);
+    if (tangent.lengthSq() < 0.001) tangent.copy(curve.getTangentAt(i / roadPoints.length));
+    tangent.normalize();
+    points.push({
+      position: point,
+      yaw: yawFromForward(tangent),
+      index: i,
+    });
+  }
+  return points;
+}
+
+function getRoadFrame(position, road = activeRoad) {
+  if (!road) {
+    return {
+      nearest: position.clone(),
+      tangent: new THREE.Vector3(0, 0, -1),
+      normal: new THREE.Vector3(1, 0, 0),
+      signedDistance: 0,
+      distance: 0,
+      width: 8,
+      inside: true,
+      sampleIndex: 0,
+    };
+  }
+
+  let best = road.samples[0];
+  let bestIndex = 0;
+  let bestDistanceSq = Infinity;
+  for (let i = 0; i < road.samples.length; i += 1) {
+    const sample = road.samples[i];
+    const dx = position.x - sample.position.x;
+    const dz = position.z - sample.position.z;
+    const distanceSq = dx * dx + dz * dz;
+    if (distanceSq < bestDistanceSq) {
+      best = sample;
+      bestIndex = i;
+      bestDistanceSq = distanceSq;
+    }
+  }
+
+  const offset = position.clone().sub(best.position);
+  const signedDistance = dotGround(offset, best.normal);
+  const distance = Math.sqrt(bestDistanceSq);
+  return {
+    nearest: best.position.clone(),
+    tangent: best.tangent.clone(),
+    normal: best.normal.clone(),
+    signedDistance,
+    distance,
+    width: best.width,
+    inside: Math.abs(signedDistance) <= best.width / 2 + road.config.shoulderWidth,
+    sampleIndex: bestIndex,
+  };
+}
+
+function isVehicleOnRoad(position) {
+  return getRoadFrame(position).inside;
+}
+
+function roadOffsetPoint(road, pointIndex, side, distance, along = 0) {
+  const base = pointFromRoadIndex(road.points, pointIndex);
+  const frame = getRoadFrame(base, road);
+  return frame.nearest
+    .clone()
+    .addScaledVector(frame.normal, side * distance)
+    .addScaledVector(frame.tangent, along);
+}
+
+function placePropsAroundRoad(road, placements, clearance, callback) {
+  for (const placement of placements) {
+    const frame = getRoadFrame(pointFromRoadIndex(road.points, placement.pointIndex), road);
+    const distance = clearance + frame.width / 2 + (placement.offset ?? 0);
+    const position = frame.nearest
+      .clone()
+      .addScaledVector(frame.normal, placement.side * distance)
+      .addScaledVector(frame.tangent, placement.along ?? 0);
+    callback(position, frame, placement);
+  }
+}
+
+function createUrbanNightProps(parent, road) {
+  const buildingMaterials = [
+    new THREE.MeshStandardMaterial({ color: 0x202832, roughness: 0.68, metalness: 0.04 }),
+    new THREE.MeshStandardMaterial({ color: 0x18232a, roughness: 0.72, metalness: 0.04 }),
+    new THREE.MeshStandardMaterial({ color: 0x2a2230, roughness: 0.66, metalness: 0.04 }),
   ];
-  const mastGeometry = new THREE.CylinderGeometry(0.06, 0.06, 3.6, 10);
-  const mastMaterial = new THREE.MeshStandardMaterial({ color: 0x334b56, roughness: 0.48, metalness: 0.3 });
+  const concrete = new THREE.MeshStandardMaterial({ color: 0x31383c, roughness: 0.72, metalness: 0.08 });
+  const neonBlue = new THREE.MeshStandardMaterial({
+    color: 0x5ce8ff,
+    emissive: 0x2ed6ff,
+    emissiveIntensity: 0.65,
+    roughness: 0.3,
+  });
+  const neonPink = new THREE.MeshStandardMaterial({
+    color: 0xff4eb8,
+    emissive: 0xff268a,
+    emissiveIntensity: 0.65,
+    roughness: 0.3,
+  });
 
-  for (let i = 0; i < 16; i += 1) {
-    const bank = new THREE.Mesh(bankGeometry, bankMaterial);
-    const angle = (i / 16) * Math.PI * 2;
-    const radius = 9.2 + (i % 4) * 1.1;
-    bank.scale.set(2.8 + Math.random() * 1.8, 0.32, 0.75 + Math.random() * 0.5);
-    bank.position.set(Math.cos(angle) * radius, 0.16, Math.sin(angle) * radius);
-    bank.rotation.y = -angle + Math.PI / 2;
-    bank.castShadow = true;
-    bank.receiveShadow = true;
-    parent.add(bank);
+  placePropsAroundRoad(road, [
+    { pointIndex: 1, side: -1, offset: 4, along: -1 },
+    { pointIndex: 2, side: -1, offset: 5, along: 2 },
+    { pointIndex: 4, side: 1, offset: 4 },
+    { pointIndex: 6, side: 1, offset: 5, along: 2 },
+    { pointIndex: 8, side: -1, offset: 7 },
+    { pointIndex: 10, side: -1, offset: 4 },
+  ], 3.2, (position, frame, placement) => {
+    const width = 3.8 + (placement.pointIndex % 3) * 1.2;
+    const depth = 3.2 + (placement.pointIndex % 2) * 1.4;
+    const height = 4 + (placement.pointIndex % 4) * 1.35;
+    const building = new THREE.Mesh(
+      new THREE.BoxGeometry(width, height, depth),
+      buildingMaterials[placement.pointIndex % buildingMaterials.length],
+    );
+    building.position.set(position.x, height / 2, position.z);
+    building.rotation.y = -Math.atan2(frame.tangent.z, frame.tangent.x) + 0.25 * placement.side;
+    building.castShadow = true;
+    building.receiveShadow = true;
+    parent.add(building);
+    registerBoxCollider(position.x, position.z, width + 0.6, depth + 0.6, building.rotation.y, {
+      bounce: 0.12,
+      friction: 0.78,
+      kind: 'building',
+    });
+  });
+
+  for (const pointIndex of [4, 5]) {
+    const left = roadOffsetPoint(road, pointIndex, -1, road.maxWidth / 2 + 3.2);
+    const right = roadOffsetPoint(road, pointIndex, 1, road.maxWidth / 2 + 3.2);
+    const center = left.clone().add(right).multiplyScalar(0.5);
+    const frame = getRoadFrame(center, road);
+    const pillarGap = 5.2;
+    for (const offset of [-pillarGap, pillarGap]) {
+      const pillarPosition = center.clone().addScaledVector(frame.normal, offset);
+      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.7, 3.4, 0.7), concrete);
+      pillar.position.set(pillarPosition.x, 1.7, pillarPosition.z);
+      pillar.castShadow = true;
+      pillar.receiveShadow = true;
+      parent.add(pillar);
+      registerBoxCollider(pillarPosition.x, pillarPosition.z, 1, 1, 0, {
+        bounce: 0.12,
+        friction: 0.7,
+        kind: 'underpass-pillar',
+      });
+    }
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(16, 0.45, 4.8), concrete);
+    deck.position.set(center.x, 3.58, center.z);
+    deck.rotation.y = -Math.atan2(frame.tangent.z, frame.tangent.x);
+    deck.castShadow = true;
+    parent.add(deck);
   }
 
-  for (let i = 0; i < 9; i += 1) {
-    const barrier = new THREE.Mesh(barrierGeometry, barrierMaterials[i % 2]);
-    const angle = (i / 9) * Math.PI * 2 + 0.2;
-    barrier.position.set(Math.cos(angle) * 15.5, 0.36, Math.sin(angle) * 15.5);
-    barrier.rotation.y = -angle + Math.PI / 2;
-    barrier.castShadow = true;
-    barrier.receiveShadow = true;
-    parent.add(barrier);
+  for (let i = 0; i < 10; i += 1) {
+    const sample = road.samples[(i * 17) % (road.samples.length - 1)];
+    const side = i % 2 === 0 ? 1 : -1;
+    const position = sample.position.clone().addScaledVector(sample.normal, side * (sample.width / 2 + 2.2));
+    addLevelLamp(parent, position.x, position.z, 0, i % 2 === 0 ? 0x5ce8ff : 0xff4eb8, 20, 13, 4.2, concrete);
   }
 
-  for (let i = 0; i < 7; i += 1) {
-    const mast = new THREE.Mesh(mastGeometry, mastMaterial);
-    const lamp = new THREE.PointLight(0x8de8ff, 18, 12, 2.2);
-    const angle = (i / 7) * Math.PI * 2;
-    mast.position.set(Math.cos(angle) * 13.5, 1.8, Math.sin(angle) * 13.5);
-    lamp.position.copy(mast.position).add(new THREE.Vector3(0, 1.6, 0));
-    lamp.userData.levelLight = true;
-    mast.castShadow = true;
-    parent.add(mast, lamp);
+  for (const [pointIndex, side, material] of [[0, 1, neonBlue], [5, -1, neonPink], [8, 1, neonBlue]]) {
+    const frame = getRoadFrame(pointFromRoadIndex(road.points, pointIndex), road);
+    const position = frame.nearest.clone().addScaledVector(frame.normal, side * (frame.width / 2 + 1.1));
+    addFlatRoadBox(parent, position, frame.tangent, 3.4, 0.16, 0.12, material);
   }
+}
+
+function createMountainTougeProps(parent, road) {
+  const rock = new THREE.MeshStandardMaterial({ color: 0x4b514a, roughness: 0.92, metalness: 0 });
+  const cliff = new THREE.MeshStandardMaterial({ color: 0x394035, roughness: 0.95, metalness: 0 });
+  const trunk = new THREE.MeshStandardMaterial({ color: 0x4b3224, roughness: 0.88 });
+  const pine = new THREE.MeshStandardMaterial({ color: 0x18351f, roughness: 0.82 });
+  const viewpoint = new THREE.MeshStandardMaterial({ color: 0x6f7469, roughness: 0.8, metalness: 0.04 });
+
+  placePropsAroundRoad(road, [
+    { pointIndex: 4, side: -1, offset: 2 },
+    { pointIndex: 5, side: -1, offset: 3 },
+    { pointIndex: 12, side: 1, offset: 2 },
+    { pointIndex: 13, side: 1, offset: 3 },
+  ], 3.6, (position, frame, placement) => {
+    const wall = new THREE.Mesh(
+      new THREE.BoxGeometry(7.5, 2.4 + (placement.pointIndex % 2), 1.4),
+      cliff,
+    );
+    wall.position.set(position.x, wall.geometry.parameters.height / 2, position.z);
+    wall.rotation.y = -Math.atan2(frame.tangent.z, frame.tangent.x) + 0.12 * placement.side;
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    parent.add(wall);
+    registerBoxCollider(position.x, position.z, 7.8, 1.8, wall.rotation.y, {
+      bounce: 0.08,
+      friction: 0.82,
+      kind: 'cliff-wall',
+    });
+  });
+
+  const treePlacements = [];
+  for (let i = 0; i < 28; i += 1) {
+    treePlacements.push({
+      pointIndex: i % road.points.length,
+      side: i % 3 === 0 ? -1 : 1,
+      offset: 5 + seededWave(i, 0.3) * 5,
+      along: (seededWave(i, 0.8) - 0.5) * 5,
+    });
+  }
+  placePropsAroundRoad(road, treePlacements, 3.4, (position) => {
+    addPineTree(parent, position.x, position.z, trunk, pine);
+  });
+
+  for (const [pointIndex, side] of [[1, 1], [8, -1], [14, 1]]) {
+    const frame = getRoadFrame(pointFromRoadIndex(road.points, pointIndex), road);
+    const position = frame.nearest.clone().addScaledVector(frame.normal, side * (frame.width / 2 + 4.8));
+    const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(1.1 + pointIndex * 0.03, 0), rock);
+    boulder.position.set(position.x, 0.8, position.z);
+    boulder.rotation.set(0.4, pointIndex, -0.2);
+    boulder.castShadow = true;
+    boulder.receiveShadow = true;
+    parent.add(boulder);
+    registerCircleCollider(position.x, position.z, 1.35, { bounce: 0.1, friction: 0.8, kind: 'rock' });
+  }
+
+  const overlook = roadOffsetPoint(road, 11, 1, road.maxWidth / 2 + 5.8);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.28, 3.1), viewpoint);
+  deck.position.set(overlook.x, 0.2, overlook.z);
+  deck.castShadow = true;
+  deck.receiveShadow = true;
+  parent.add(deck);
+}
+
+function createIndustrialDockProps(parent, road) {
+  const warehouse = new THREE.MeshStandardMaterial({ color: 0x38454d, roughness: 0.74, metalness: 0.12 });
+  const warehouseDoor = new THREE.MeshStandardMaterial({ color: 0x22272a, roughness: 0.65, metalness: 0.2 });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x2c3334, roughness: 0.5, metalness: 0.22 });
+  const flood = new THREE.MeshStandardMaterial({
+    color: 0xffbf52,
+    emissive: 0xff8a18,
+    emissiveIntensity: 0.35,
+    roughness: 0.4,
+  });
+  const containerMaterials = [0x1f6f8b, 0xa43f2b, 0xd19d32, 0x38454d].map((color) => (
+    new THREE.MeshStandardMaterial({ color, roughness: 0.74, metalness: 0.18 })
+  ));
+
+  placePropsAroundRoad(road, [
+    { pointIndex: 1, side: -1, offset: 5 },
+    { pointIndex: 3, side: 1, offset: 4 },
+    { pointIndex: 6, side: -1, offset: 4 },
+    { pointIndex: 12, side: 1, offset: 5 },
+  ], 3.6, (position, frame, placement) => {
+    const width = 7.5;
+    const depth = 4.2;
+    const height = 3.2;
+    const building = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), warehouse);
+    building.position.set(position.x, height / 2, position.z);
+    building.rotation.y = -Math.atan2(frame.tangent.z, frame.tangent.x);
+    building.castShadow = true;
+    building.receiveShadow = true;
+    parent.add(building);
+    registerBoxCollider(position.x, position.z, width + 0.7, depth + 0.7, building.rotation.y, {
+      bounce: 0.12,
+      friction: 0.76,
+      kind: 'warehouse',
+    });
+    const doorPosition = position.clone().addScaledVector(frame.normal, -placement.side * (depth / 2 + 0.04));
+    addFlatRoadBox(parent, doorPosition, frame.tangent, 2.5, 0.16, 1.05, warehouseDoor);
+  });
+
+  const containerPlacements = [
+    { pointIndex: 0, side: 1, offset: 4, count: 2 },
+    { pointIndex: 4, side: -1, offset: 4, count: 2 },
+    { pointIndex: 7, side: 1, offset: 3.5, count: 1 },
+    { pointIndex: 8, side: -1, offset: 4, count: 2 },
+    { pointIndex: 13, side: -1, offset: 4, count: 3 },
+  ];
+  placePropsAroundRoad(road, containerPlacements, 3.1, (position, frame, placement) => {
+    addContainerStack(
+      parent,
+      position.x,
+      position.z,
+      -Math.atan2(frame.tangent.z, frame.tangent.x) + 0.08 * placement.side,
+      placement.count,
+      containerMaterials,
+      placement.pointIndex,
+    );
+  });
+
+  for (const pointIndex of [2, 10]) {
+    const frame = getRoadFrame(pointFromRoadIndex(road.points, pointIndex), road);
+    const position = frame.nearest.clone().addScaledVector(frame.normal, (pointIndex === 2 ? -1 : 1) * (frame.width / 2 + 5.2));
+    addDockCrane(parent, position.x, position.z, -Math.atan2(frame.tangent.z, frame.tangent.x), steel, flood);
+  }
+
+  const drumMaterial = new THREE.MeshStandardMaterial({ color: 0x44515a, roughness: 0.5, metalness: 0.42 });
+  for (const pointIndex of [7, 8, 11, 12]) {
+    const frame = getRoadFrame(pointFromRoadIndex(road.points, pointIndex), road);
+    const position = frame.nearest.clone().addScaledVector(frame.normal, (pointIndex % 2 ? 1 : -1) * (frame.width / 2 + 1.8));
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.72, 18), drumMaterial);
+    drum.position.set(position.x, 0.36, position.z);
+    drum.castShadow = true;
+    drum.receiveShadow = true;
+    parent.add(drum);
+    registerCircleCollider(position.x, position.z, 0.58, { bounce: 0.35, friction: 0.48, kind: 'drum' });
+  }
+
+  for (let i = 0; i < 8; i += 1) {
+    const sample = road.samples[(i * 21) % (road.samples.length - 1)];
+    const side = i % 2 === 0 ? 1 : -1;
+    const position = sample.position.clone().addScaledVector(sample.normal, side * (sample.width / 2 + 2.4));
+    addLevelLamp(parent, position.x, position.z, 0, 0xffc067, 24, 15, 4.6, steel);
+  }
+}
+
+function addPineTree(parent, x, z, trunkMaterial, leafMaterial) {
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 1.1, 7), trunkMaterial);
+  trunk.position.set(x, 0.55, z);
+  trunk.castShadow = true;
+  parent.add(trunk);
+
+  for (let i = 0; i < 3; i += 1) {
+    const leaves = new THREE.Mesh(new THREE.ConeGeometry(0.85 - i * 0.15, 1.1, 8), leafMaterial);
+    leaves.position.set(x, 1.25 + i * 0.48, z);
+    leaves.castShadow = true;
+    parent.add(leaves);
+  }
+}
+
+function addContainerStack(parent, x, z, rotation, count, materials, materialOffset = 0) {
+  const geometry = new THREE.BoxGeometry(4.4, 1.25, 1.35);
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = rotation;
+
+  for (let i = 0; i < count; i += 1) {
+    const box = new THREE.Mesh(geometry, materials[(i + materialOffset) % materials.length]);
+    box.position.y = 0.62 + i * 1.22;
+    box.position.x = i % 2 === 0 ? 0 : 0.18;
+    box.castShadow = true;
+    box.receiveShadow = true;
+    group.add(box);
+  }
+
+  parent.add(group);
+  registerBoxCollider(x, z, 4.6, 1.58, rotation, {
+    bounce: 0.18,
+    friction: 0.62,
+    kind: 'container',
+  });
+  return group;
+}
+
+function addBarrier(parent, x, z, rotation, material, width, height, depth) {
+  const barrier = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+  barrier.position.set(x, height / 2, z);
+  barrier.rotation.y = rotation;
+  barrier.castShadow = true;
+  barrier.receiveShadow = true;
+  parent.add(barrier);
+  registerBoxCollider(x, z, width + 0.22, depth + 0.18, rotation, {
+    bounce: 0.32,
+    friction: 0.58,
+    kind: 'barrier',
+  });
+  return barrier;
+}
+
+function addPaintStripe(parent, x, z, length, width, rotation, color, opacity) {
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(length, 0.012, width),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+    }),
+  );
+  stripe.position.set(x, 0.032, z);
+  stripe.rotation.y = rotation;
+  stripe.renderOrder = 0;
+  parent.add(stripe);
+  return stripe;
+}
+
+function addDockCrane(parent, x, z, rotation, steelMaterial, lampMaterial) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = rotation;
+  const legGeometry = new THREE.BoxGeometry(0.42, 5.8, 0.42);
+  const beamGeometry = new THREE.BoxGeometry(7.2, 0.36, 0.42);
+  for (const legX of [-2.2, 2.2]) {
+    const leg = new THREE.Mesh(legGeometry, steelMaterial);
+    leg.position.set(legX, 2.9, 0);
+    leg.castShadow = true;
+    leg.receiveShadow = true;
+    group.add(leg);
+    const worldLeg = localPoint2D(x, z, rotation, legX, 0);
+    registerBoxCollider(worldLeg.x, worldLeg.z, 0.72, 0.72, rotation, {
+      bounce: 0.26,
+      friction: 0.62,
+      kind: 'crane-leg',
+    });
+  }
+  const beam = new THREE.Mesh(beamGeometry, steelMaterial);
+  beam.position.set(0, 5.75, 0);
+  beam.castShadow = true;
+  beam.receiveShadow = true;
+  group.add(beam);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.52, 0.08), lampMaterial);
+  sign.position.set(0, 4.6, -0.28);
+  group.add(sign);
+  parent.add(group);
+  return group;
+}
+
+function addTerminalGate(parent, x, z, rotation, mastMaterial, panelMaterial) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = rotation;
+  const postGeometry = new THREE.BoxGeometry(0.42, 2.7, 0.42);
+  for (const localZ of [-1.35, 1.35]) {
+    const post = new THREE.Mesh(postGeometry, mastMaterial);
+    post.position.set(0, 1.35, localZ);
+    post.castShadow = true;
+    post.receiveShadow = true;
+    group.add(post);
+    const worldPost = localPoint2D(x, z, rotation, 0, localZ);
+    registerBoxCollider(worldPost.x, worldPost.z, 0.72, 0.72, rotation, {
+      bounce: 0.24,
+      friction: 0.66,
+      kind: 'gate-post',
+    });
+  }
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.72, 3.4), panelMaterial);
+  panel.position.set(0, 1.55, 0);
+  panel.castShadow = true;
+  panel.receiveShadow = true;
+  group.add(panel);
+  parent.add(group);
+  registerBoxCollider(x, z, 0.56, 3.7, rotation, {
+    bounce: 0.22,
+    friction: 0.62,
+    kind: 'gate',
+  });
+}
+
+function addFlyoverColumn(parent, x, z, concreteMaterial, glowMaterial) {
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.9, 4.8, 18), concreteMaterial);
+  base.position.set(x, 2.4, z);
+  base.castShadow = true;
+  base.receiveShadow = true;
+  parent.add(base);
+  registerCircleCollider(x, z, 1.05, { bounce: 0.22, friction: 0.7, kind: 'flyover-column' });
+
+  const crown = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.42, 1.2), concreteMaterial);
+  crown.position.set(x, 4.95, z);
+  crown.castShadow = true;
+  parent.add(crown);
+
+  const neon = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.08), glowMaterial);
+  neon.position.set(x, 3.35, z + 0.74);
+  parent.add(neon);
+}
+
+function addMarketStall(parent, x, z, rotation, stallMaterial, awningMaterial) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = rotation;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.05, 1.55), stallMaterial);
+  body.position.y = 0.52;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(2.75, 0.16, 1.85), awningMaterial);
+  awning.position.y = 1.2;
+  awning.castShadow = true;
+  group.add(awning);
+  parent.add(group);
+  registerBoxCollider(x, z, 2.8, 1.9, rotation, {
+    bounce: 0.2,
+    friction: 0.64,
+    kind: 'market-stall',
+  });
+}
+
+function addLevelLamp(parent, x, z, angle, color, intensity, distance, height, poleMaterial) {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, height, 10), poleMaterial);
+  const lamp = new THREE.PointLight(color, intensity, distance, 2.2);
+  pole.position.set(x, height / 2, z);
+  lamp.position.copy(pole.position).add(new THREE.Vector3(0, 1.7, 0));
+  lamp.userData.levelLight = true;
+  pole.rotation.y = angle;
+  pole.castShadow = true;
+  parent.add(pole, lamp);
+  registerCircleCollider(x, z, 0.34, { bounce: 0.28, friction: 0.38, kind: 'lamp' });
+}
+
+function localPoint2D(originX, originZ, rotation, localX, localZ) {
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  return {
+    x: originX + localX * cos + localZ * sin,
+    z: originZ - localX * sin + localZ * cos,
+  };
+}
+
+function seededWave(index, salt = 0) {
+  const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function registerBoxCollider(x, z, width, depth, rotation = 0, options = {}) {
+  activeColliders.push({
+    type: 'box',
+    x,
+    z,
+    halfX: width / 2,
+    halfZ: depth / 2,
+    rotation,
+    bounce: options.bounce ?? 0.24,
+    friction: options.friction ?? 0.52,
+    kind: options.kind ?? 'box',
+  });
+}
+
+function registerCircleCollider(x, z, radius, options = {}) {
+  activeColliders.push({
+    type: 'circle',
+    x,
+    z,
+    radius,
+    bounce: options.bounce ?? 0.28,
+    friction: options.friction ?? 0.44,
+    kind: options.kind ?? 'circle',
+  });
 }
 
 function createCar() {
@@ -1475,20 +2265,21 @@ function animate(now = 0) {
 function updateVehicle(delta) {
   const vehicle = state.vehicle;
   const level = getActiveLevelConfig();
-  const route = level.route;
+  const roadConfig = level.road;
   const handling = getActiveHandling(level);
   const basis = getVehicleBasis(vehicle.yaw);
-  const radial = vehicle.position.clone();
-  radial.y = 0;
-  if (radial.lengthSq() < 0.001) radial.set(1, 0, 0);
-  radial.normalize();
-  const inward = radial.clone().multiplyScalar(-1);
-  const tangent = new THREE.Vector3(-radial.z, 0, radial.x);
-  const desiredForward = tangent.clone().multiplyScalar(Math.cos(route.driftAngle)).addScaledVector(inward, Math.sin(route.driftAngle)).normalize();
+  const roadFrame = getRoadFrame(vehicle.position);
+  const tangent = roadFrame.tangent;
+  const correctionNormal = roadFrame.normal.clone().multiplyScalar(-Math.sign(roadFrame.signedDistance || 1));
+  const desiredForward = tangent
+    .clone()
+    .multiplyScalar(Math.cos(roadConfig.driftAngle))
+    .addScaledVector(correctionNormal, Math.sin(roadConfig.driftAngle) * 0.65)
+    .normalize();
   const desiredYaw = yawFromForward(desiredForward);
   const yawError = wrapAngle(desiredYaw - vehicle.yaw);
 
-  const controls = getDriverControls(vehicle, basis, radial, tangent, yawError, handling);
+  const controls = getDriverControls(vehicle, basis, roadFrame.normal, tangent, yawError, handling);
   vehicle.throttle = controls.throttle;
   vehicle.steer = THREE.MathUtils.lerp(
     vehicle.steer,
@@ -1512,15 +2303,15 @@ function updateVehicle(delta) {
   const force = new THREE.Vector3();
   let torque = 0;
 
-  const radiusError = vehicle.position.length() - route.targetRadius;
-  const radialSpeed = dotGround(vehicle.velocity, radial);
+  const centerError = roadFrame.signedDistance;
+  const lateralSpeed = dotGround(vehicle.velocity, roadFrame.normal);
   const tangentSpeed = dotGround(vehicle.velocity, tangent);
   const driverCorrection = state.manual
     ? new THREE.Vector3()
     : tangent
       .clone()
-      .multiplyScalar((route.targetSpeed - tangentSpeed) * 1.75)
-      .addScaledVector(radial, -radiusError * 8.8 - radialSpeed * 5.6);
+      .multiplyScalar((roadConfig.targetSpeed - tangentSpeed) * 1.75)
+      .addScaledVector(roadFrame.normal, -centerError * 7.8 - lateralSpeed * 5.2);
 
   const frontCornering = sim.frontCornering * handling.frontCorneringScale;
   const rearCornering = sim.rearCornering * handling.rearCorneringScale;
@@ -1554,14 +2345,201 @@ function updateVehicle(delta) {
   vehicle.yawRate += (torque / sim.inertia) * delta;
   vehicle.yawRate = THREE.MathUtils.clamp(vehicle.yawRate, -2.4, 2.4);
   vehicle.yaw = wrapAngle(vehicle.yaw + vehicle.yawRate * delta);
+  const impact = resolveVehicleCollisions(vehicle, delta);
+  updateRoadAdherence(vehicle, delta);
 
-  vehicle.frontSlip = THREE.MathUtils.clamp(Math.abs(frontLat) / (4.2 * handling.frontGripScale) + Math.abs(vehicle.steer) * 0.15, 0, 1);
-  vehicle.rearSlip = THREE.MathUtils.clamp(Math.abs(rearLat) / (2.5 * handling.rearGripScale) + rearSlipFromPower * 0.9, 0, 1);
+  vehicle.frontSlip = THREE.MathUtils.clamp(
+    Math.abs(frontLat) / (4.2 * handling.frontGripScale) + Math.abs(vehicle.steer) * 0.15 + impact * 0.1,
+    0,
+    1,
+  );
+  vehicle.rearSlip = THREE.MathUtils.clamp(
+    Math.abs(rearLat) / (2.5 * handling.rearGripScale) + rearSlipFromPower * 0.9 + impact * 0.16,
+    0,
+    1,
+  );
   vehicle.lateralG = THREE.MathUtils.clamp((frontLateralForce + rearLateralForce) / 18, -1.25, 1.25);
   vehicle.wheelSpinFront += Math.max(0.8, Math.abs(frontLong)) * delta * 2.8;
   vehicle.wheelSpinRear += (Math.max(1, Math.abs(rearLong)) * 3.2 + Math.abs(rearDriveForce) * 1.1 * vehicle.rearSlip) * delta;
 
   updateWheelContactData(vehicle);
+  vehicle.roadFrame = getRoadFrame(vehicle.position);
+}
+
+function updateRoadAdherence(vehicle, delta) {
+  const frame = getRoadFrame(vehicle.position);
+  if (frame.inside) {
+    vehicle.offRoadTime = 0;
+    return;
+  }
+
+  vehicle.offRoadTime += delta;
+  vehicle.velocity.multiplyScalar(Math.pow(0.08, delta));
+  vehicle.yawRate *= Math.pow(0.15, delta);
+
+  if (vehicle.offRoadTime > 2) {
+    resetVehicleToRoad(vehicle);
+  }
+}
+
+function resetVehicleToRoad(vehicle) {
+  const reset = getNearestResetPoint(vehicle.position);
+  vehicle.position.copy(reset.position);
+  vehicle.velocity.copy(getVehicleBasis(reset.yaw).forward).multiplyScalar(0.25);
+  vehicle.yaw = reset.yaw;
+  vehicle.yawRate = 0;
+  vehicle.steer = 0;
+  vehicle.offRoadTime = 0;
+  state.run.invalidTime = runConfig.breakGrace + 0.35;
+  state.run.driftDuration = 0;
+  state.run.combo = Math.max(1, state.run.combo - 0.55);
+  updateWheelContactData(vehicle);
+}
+
+function getNearestResetPoint(position) {
+  const fallback = activeRoad?.spawn ?? { position: new THREE.Vector3(), yaw: Math.PI };
+  if (!activeRoad?.resetPoints?.length) return fallback;
+
+  let nearest = activeRoad.resetPoints[0];
+  let nearestDistanceSq = Infinity;
+  for (const reset of activeRoad.resetPoints) {
+    const dx = position.x - reset.position.x;
+    const dz = position.z - reset.position.z;
+    const distanceSq = dx * dx + dz * dz;
+    if (distanceSq < nearestDistanceSq) {
+      nearest = reset;
+      nearestDistanceSq = distanceSq;
+    }
+  }
+  return nearest;
+}
+
+function resolveVehicleCollisions(vehicle, delta) {
+  if (activeColliders.length === 0) return 0;
+
+  let strongestImpact = 0;
+  let solvedContacts = 0;
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    const basis = getVehicleBasis(vehicle.yaw);
+
+    for (const sample of carCollisionSamples) {
+      const contact = vehicle.position
+        .clone()
+        .addScaledVector(basis.right, sample.x)
+        .addScaledVector(basis.forward, -sample.z);
+
+      for (const collider of activeColliders) {
+        const hit = testColliderContact(contact, sample.radius, collider);
+        if (!hit) continue;
+
+        const push = Math.min(hit.depth + 0.012, 0.55);
+        vehicle.position.addScaledVector(hit.normal, push);
+        solvedContacts += 1;
+
+        const velocityIntoSurface = dotGround(vehicle.velocity, hit.normal);
+        const impactSpeed = Math.max(0, -velocityIntoSurface);
+        strongestImpact = Math.max(strongestImpact, impactSpeed * (0.55 + hit.depth));
+
+        if (velocityIntoSurface < 0) {
+          vehicle.velocity.addScaledVector(hit.normal, -velocityIntoSurface * (1 + collider.bounce));
+        }
+
+        const remainingNormalSpeed = dotGround(vehicle.velocity, hit.normal);
+        const tangent = vehicle.velocity.clone().addScaledVector(hit.normal, -remainingNormalSpeed);
+        vehicle.velocity.addScaledVector(tangent, -Math.min(0.45, collider.friction * 0.22));
+
+        const yawKick = (hit.normal.x * basis.forward.z - hit.normal.z * basis.forward.x)
+          * (0.08 + impactSpeed * 0.055);
+        vehicle.yawRate = THREE.MathUtils.clamp(vehicle.yawRate + yawKick, -2.7, 2.7);
+      }
+    }
+  }
+
+  if (strongestImpact > 0.05 || solvedContacts > 0) {
+    const impact = THREE.MathUtils.clamp(strongestImpact / 5.4 + solvedContacts * 0.03, 0, 1);
+    state.feedback.impact = Math.max(state.feedback.impact, impact);
+    state.feedback.shake = Math.max(state.feedback.shake, impact * 0.92);
+
+    if (state.manual && impact > 0.22) {
+      state.run.invalidTime = Math.max(state.run.invalidTime, runConfig.breakGrace + impact * 0.18);
+      state.run.driftDuration = 0;
+      state.run.combo = Math.max(1, state.run.combo - impact * 0.42 * Math.max(1, delta * 10));
+    }
+
+    return impact;
+  }
+
+  return 0;
+}
+
+function testColliderContact(point, radius, collider) {
+  if (collider.type === 'circle') return testCircleColliderContact(point, radius, collider);
+  return testBoxColliderContact(point, radius, collider);
+}
+
+function testCircleColliderContact(point, radius, collider) {
+  const dx = point.x - collider.x;
+  const dz = point.z - collider.z;
+  const minDistance = radius + collider.radius;
+  const distanceSq = dx * dx + dz * dz;
+  if (distanceSq >= minDistance * minDistance) return null;
+
+  if (distanceSq < 0.0001) {
+    return {
+      normal: new THREE.Vector3(1, 0, 0),
+      depth: minDistance,
+    };
+  }
+
+  const distance = Math.sqrt(distanceSq);
+  return {
+    normal: new THREE.Vector3(dx / distance, 0, dz / distance),
+    depth: minDistance - distance,
+  };
+}
+
+function testBoxColliderContact(point, radius, collider) {
+  const cos = Math.cos(-collider.rotation);
+  const sin = Math.sin(-collider.rotation);
+  const dx = point.x - collider.x;
+  const dz = point.z - collider.z;
+  const localX = dx * cos + dz * sin;
+  const localZ = -dx * sin + dz * cos;
+  const closestX = THREE.MathUtils.clamp(localX, -collider.halfX, collider.halfX);
+  const closestZ = THREE.MathUtils.clamp(localZ, -collider.halfZ, collider.halfZ);
+  const diffX = localX - closestX;
+  const diffZ = localZ - closestZ;
+  const outsideDistanceSq = diffX * diffX + diffZ * diffZ;
+
+  if (outsideDistanceSq > 0.000001) {
+    if (outsideDistanceSq >= radius * radius) return null;
+    const outsideDistance = Math.sqrt(outsideDistanceSq);
+    return {
+      normal: rotateLocalNormal(diffX / outsideDistance, diffZ / outsideDistance, collider.rotation),
+      depth: radius - outsideDistance,
+    };
+  }
+
+  const distanceToX = collider.halfX - Math.abs(localX);
+  const distanceToZ = collider.halfZ - Math.abs(localZ);
+  if (distanceToX < distanceToZ) {
+    return {
+      normal: rotateLocalNormal(Math.sign(localX || 1), 0, collider.rotation),
+      depth: radius + distanceToX,
+    };
+  }
+
+  return {
+    normal: rotateLocalNormal(0, Math.sign(localZ || 1), collider.rotation),
+    depth: radius + distanceToZ,
+  };
+}
+
+function rotateLocalNormal(x, z, rotation) {
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  return new THREE.Vector3(x * cos + z * sin, 0, -x * sin + z * cos).normalize();
 }
 
 function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle)) {
@@ -1689,9 +2667,14 @@ function getDriverControls(vehicle, basis, radial, tangent, yawError, handling =
 
 function resetVehicle(manual) {
   const vehicle = state.vehicle;
-  vehicle.position.set(manual ? 0 : 5.65, 0, manual ? 0 : 0);
-  vehicle.velocity.set(manual ? 0 : 0, 0, manual ? -0.15 : 7.4);
-  vehicle.yaw = manual ? Math.PI : 2.42;
+  const spawn = activeRoad?.spawn ?? getRoadSpawn(getActiveLevelConfig().road, activeRoad?.curve ?? new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -1),
+  ]));
+  const basis = getVehicleBasis(spawn.yaw);
+  vehicle.position.copy(spawn.position);
+  vehicle.velocity.copy(basis.forward).multiplyScalar(manual ? 0.15 : getActiveLevelConfig().road.targetSpeed * 1.05);
+  vehicle.yaw = spawn.yaw;
   vehicle.yawRate = manual ? 0 : 0.72;
   vehicle.steer = 0;
   vehicle.throttle = manual ? 0 : 1;
@@ -1700,6 +2683,8 @@ function resetVehicle(manual) {
   vehicle.rearSlip = 0;
   vehicle.frontSlip = 0;
   vehicle.lateralG = 0;
+  vehicle.offRoadTime = 0;
+  vehicle.roadFrame = getRoadFrame(vehicle.position);
   updateWheelContactData(vehicle);
   state.smokeAccumulator = 0;
 }
@@ -1716,6 +2701,7 @@ function resetRun() {
   state.run.ended = false;
   state.feedback.popupBank = 0;
   state.feedback.popupCooldown = 0;
+  state.feedback.impact = 0;
   state.feedback.comboPulse = 0;
   state.feedback.lastComboStep = 1;
   scorePopupsEl.replaceChildren();
@@ -1812,7 +2798,10 @@ function updateScoring(delta, telemetry) {
   const speed = telemetry.speed;
   const angle = Math.abs(telemetry.slipAngle);
   const rearSlip = state.vehicle.rearSlip;
+  const roadFrame = getRoadFrame(state.vehicle.position);
+  const onRoad = roadFrame.inside;
   const validDrift = state.manual
+    && onRoad
     && speed >= runConfig.minSpeed
     && angle >= runConfig.minAngle
     && angle <= runConfig.maxAngle
@@ -1849,7 +2838,7 @@ function updateScoring(delta, telemetry) {
     THREE.MathUtils.clamp((rearSlip - runConfig.minRearSlip) / (1 - runConfig.minRearSlip), 0, 1),
   );
   const sustainFactor = THREE.MathUtils.clamp(run.driftDuration / runConfig.sustainRamp, 0.45, 1);
-  const levelMultiplier = getActiveLevelConfig().scoring.driftRewardMultiplier;
+  const levelMultiplier = getActiveLevelConfig().scoring.driftRewardMultiplier * getActiveScoringZoneMultiplier();
   const previousComboStep = Math.floor(run.combo);
 
   run.combo = Math.min(
@@ -1879,6 +2868,21 @@ function updateScoring(delta, telemetry) {
     state.feedback.popupBank = 0;
     state.feedback.popupCooldown = 0.65;
   }
+}
+
+function getActiveScoringZoneMultiplier() {
+  if (!activeRoad?.scoringZones?.length) return 1;
+
+  let multiplier = 1;
+  for (const zone of activeRoad.scoringZones) {
+    const dx = state.vehicle.position.x - zone.center.x;
+    const dz = state.vehicle.position.z - zone.center.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > zone.radius) continue;
+    const influence = 1 - THREE.MathUtils.smoothstep(distance / zone.radius, 0, 1);
+    multiplier = Math.max(multiplier, THREE.MathUtils.lerp(1, zone.multiplier, influence));
+  }
+  return multiplier;
 }
 
 function finishRun() {
@@ -1928,12 +2932,16 @@ function updateFeedbackState(delta, telemetry) {
     1 - Math.pow(follow, delta),
   );
 
-  const targetShake = THREE.MathUtils.clamp((state.feedback.driftIntensity - 0.42) / 0.58, 0, 1);
+  const targetShake = Math.max(
+    THREE.MathUtils.clamp((state.feedback.driftIntensity - 0.42) / 0.58, 0, 1),
+    state.feedback.impact,
+  );
   state.feedback.shake = THREE.MathUtils.lerp(
     state.feedback.shake,
     targetShake,
     1 - Math.pow(0.018, delta),
   );
+  state.feedback.impact = Math.max(0, state.feedback.impact - delta * 2.6);
 }
 
 function updateFeedbackVisuals(delta) {
@@ -2250,6 +3258,11 @@ function updateStatusText() {
 
   if (state.run.driftValid) {
     statusEl.textContent = 'Drifting';
+    return;
+  }
+
+  if (!isVehicleOnRoad(state.vehicle.position)) {
+    statusEl.textContent = 'Off road';
     return;
   }
 
