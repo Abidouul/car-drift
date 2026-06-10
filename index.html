@@ -66,6 +66,101 @@
           </div>
         </div>
 
+        <div class="menu-panel car-select-panel" data-panel="cars" hidden>
+          <div class="car-select-heading">
+            <p class="eyebrow">Garage select</p>
+            <h2>Choose Your Drift Machine</h2>
+          </div>
+          <div class="car-grid" aria-label="Car selection">
+            <article class="car-card is-selected" data-car-card="porsche">
+              <div class="car-preview-panel">
+                <span>Preview bay 01</span>
+                <div class="car-art car-art-porsche" aria-hidden="true">
+                  <i class="car-shadow"></i>
+                  <i class="car-wing"></i>
+                  <i class="car-body"></i>
+                  <i class="car-cabin"></i>
+                  <i class="car-splitter"></i>
+                  <i class="car-stripe"></i>
+                  <i class="car-wheel car-wheel-front"></i>
+                  <i class="car-wheel car-wheel-rear"></i>
+                </div>
+              </div>
+              <div class="car-card-body">
+                <h3>Porsche Drift Build</h3>
+                <dl class="car-stats">
+                  <div>
+                    <dt>Power</dt>
+                    <dd>610 HP</dd>
+                  </div>
+                  <div>
+                    <dt>Handling</dt>
+                    <dd>86</dd>
+                  </div>
+                  <div>
+                    <dt>Drift Angle</dt>
+                    <dd>92</dd>
+                  </div>
+                  <div>
+                    <dt>Grip</dt>
+                    <dd>74</dd>
+                  </div>
+                  <div>
+                    <dt>Weight</dt>
+                    <dd>1280 kg</dd>
+                  </div>
+                </dl>
+                <button type="button" data-select-car="porsche">Select Car</button>
+              </div>
+            </article>
+            <article class="car-card" data-car-card="e30">
+              <div class="car-preview-panel">
+                <span>Preview bay 02</span>
+                <div class="car-art car-art-e30" aria-hidden="true">
+                  <i class="car-shadow"></i>
+                  <i class="car-wing"></i>
+                  <i class="car-body"></i>
+                  <i class="car-cabin"></i>
+                  <i class="car-bash"></i>
+                  <i class="car-stripe"></i>
+                  <i class="car-wheel car-wheel-front"></i>
+                  <i class="car-wheel car-wheel-rear"></i>
+                </div>
+              </div>
+              <div class="car-card-body">
+                <h3>BMW E30 Drift Build</h3>
+                <dl class="car-stats">
+                  <div>
+                    <dt>Power</dt>
+                    <dd>420 HP</dd>
+                  </div>
+                  <div>
+                    <dt>Handling</dt>
+                    <dd>90</dd>
+                  </div>
+                  <div>
+                    <dt>Drift Angle</dt>
+                    <dd>88</dd>
+                  </div>
+                  <div>
+                    <dt>Grip</dt>
+                    <dd>69</dd>
+                  </div>
+                  <div>
+                    <dt>Weight</dt>
+                    <dd>1120 kg</dd>
+                  </div>
+                </dl>
+                <button class="secondary-button" type="button" data-select-car="e30">Select Car</button>
+              </div>
+            </article>
+          </div>
+          <div class="car-select-footer">
+            <button class="secondary-button" type="button" data-back-menu>Back</button>
+            <button id="car-continue" type="button">Continue to Map Selection</button>
+          </div>
+        </div>
+
         <div class="menu-panel" data-panel="levels" hidden>
           <p class="eyebrow">Select level</p>
           <h2>Choose Arena</h2>
@@ -83,7 +178,7 @@
               <small>Wide dock roads, container chicane, cranes, warehouses, practice pad</small>
             </button>
           </div>
-          <button class="secondary-button" type="button" data-back-menu>Back</button>
+          <button id="level-back-button" class="secondary-button" type="button">Back</button>
         </div>
 
         <div class="menu-panel" data-panel="pause" hidden>
