@@ -177,20 +177,21 @@ const runConfig = {
 };
 
 const manualTuning = {
-  steerLimitLowSpeed: 0.9,
-  steerLimitHighSpeed: 0.54,
-  steerFalloffSpeed: 9.8,
+  steerLimitLowSpeed: 0.82,
+  steerLimitHighSpeed: 0.42,
+  steerFalloffSpeed: 8.2,
   throttleReverseScale: 0.58,
   brakingSpeedThreshold: 0.45,
   brakeForce: 9.2,
   linearDrag: 0.28,
   maxSpeed: 12.4,
-  yawDamping: 0.34,
-  steerResponse: 0.00065,
+  yawDamping: 0.52,
+  spinStability: 0.74,
+  steerResponse: 0.0045,
   launchAssistDuration: 10,
   launchDriveForceScale: 1.28,
-  launchSteerScale: 1.08,
-  launchYawDampingScale: 1.15,
+  launchSteerScale: 1.04,
+  launchYawDampingScale: 1.2,
 };
 
 let scene;
@@ -282,9 +283,9 @@ const sim = {
   inertia: 4.2,
   driveForce: 16.8,
   frontGrip: 17,
-  rearGrip: 3.1,
+  rearGrip: 3.35,
   frontCornering: 12.5,
-  rearCornering: 4.8,
+  rearCornering: 5.05,
 };
 
 const carCollisionSamples = [
@@ -2387,10 +2388,25 @@ function updateVehicle(delta) {
   force.add(rearForce);
   torque += torqueFromForce(rearContact.relative, rearForce);
 
+  const speed = vehicle.velocity.length();
+  const slipAngle = speed < runConfig.angleDisplaySpeed ? 0 : signedAngleOnGround(basis.forward, vehicle.velocity);
+  const spinStabilityTorque = state.manual
+    ? -vehicle.yawRate
+      * manualTuning.spinStability
+      * THREE.MathUtils.clamp((speed - 5.2) / 5.6, 0, 1)
+      * Math.max(
+        THREE.MathUtils.clamp((Math.abs(vehicle.yawRate) - 1.05) / 1.15, 0, 1),
+        THREE.MathUtils.clamp(
+          (Math.abs(slipAngle) - THREE.MathUtils.degToRad(56)) / THREE.MathUtils.degToRad(28),
+          0,
+          1,
+        ),
+      )
+    : 0;
   const yawControlTorque = state.manual
     ? -vehicle.yawRate * manualTuning.yawDamping * handling.yawDampingScale
     : yawError * 22 - vehicle.yawRate * 1.05;
-  torque += yawControlTorque;
+  torque += yawControlTorque + spinStabilityTorque;
 
   force.addScaledVector(vehicle.velocity, state.manual ? -manualTuning.linearDrag * handling.dragScale : -0.72);
   vehicle.velocity.addScaledVector(force, delta / sim.mass);
@@ -2398,7 +2414,11 @@ function updateVehicle(delta) {
   vehicle.position.addScaledVector(vehicle.velocity, delta);
 
   vehicle.yawRate += (torque / sim.inertia) * delta;
-  vehicle.yawRate = THREE.MathUtils.clamp(vehicle.yawRate, -2.4, 2.4);
+  vehicle.yawRate = THREE.MathUtils.clamp(
+    vehicle.yawRate,
+    state.manual ? -1.95 : -2.4,
+    state.manual ? 1.95 : 2.4,
+  );
   vehicle.yaw = wrapAngle(vehicle.yaw + vehicle.yawRate * delta);
   const impact = resolveVehicleCollisions(vehicle, delta);
   updateRoadAdherence(vehicle, delta);
@@ -2505,8 +2525,8 @@ function resolveVehicleCollisions(vehicle, delta) {
         vehicle.velocity.addScaledVector(tangent, -Math.min(0.45, collider.friction * 0.22));
 
         const yawKick = (hit.normal.x * basis.forward.z - hit.normal.z * basis.forward.x)
-          * (0.08 + impactSpeed * 0.055);
-        vehicle.yawRate = THREE.MathUtils.clamp(vehicle.yawRate + yawKick, -2.7, 2.7);
+          * (0.045 + impactSpeed * 0.032);
+        vehicle.yawRate = THREE.MathUtils.clamp(vehicle.yawRate + yawKick, -2.05, 2.05);
       }
     }
   }
@@ -2514,7 +2534,7 @@ function resolveVehicleCollisions(vehicle, delta) {
   if (strongestImpact > 0.05 || solvedContacts > 0) {
     const impact = THREE.MathUtils.clamp(strongestImpact / 5.4 + solvedContacts * 0.03, 0, 1);
     state.feedback.impact = Math.max(state.feedback.impact, impact);
-    state.feedback.shake = Math.max(state.feedback.shake, impact * 0.92);
+    state.feedback.shake = Math.max(state.feedback.shake, impact * 0.58);
 
     if (state.manual && impact > 0.22) {
       state.run.invalidTime = Math.max(state.run.invalidTime, runConfig.breakGrace + impact * 0.18);
@@ -2630,38 +2650,39 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
   const basis = getVehicleBasis(vehicle.yaw);
   const zoom = state.cameraZoom;
   const speedFactor = THREE.MathUtils.clamp(speed / 12, 0, 1);
-  const targetFov = getResponsiveFov() + speedFactor * (narrowView ? 8 : 13);
+  const targetFov = getResponsiveFov() + speedFactor * (narrowView ? 5 : 7);
   camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.pow(0.02, delta));
   camera.updateProjectionMatrix();
 
   const forwardCameraOffset = basis.forward.clone().multiplyScalar(
-    narrowView ? -8.8 - speedFactor * 2.2 : -5.8 - speedFactor * 4.8,
-  );
-  const sideCameraOffset = basis.right.clone().multiplyScalar(
-    narrowView ? -5.2 - speedFactor * 1.1 : -7.2 - speedFactor * 1.6,
+    narrowView ? -9.2 - speedFactor * 1.7 : -7.2 - speedFactor * 2.8,
   );
   const orbitOffset = forwardCameraOffset
-    .add(sideCameraOffset)
     .applyAxisAngle(new THREE.Vector3(0, 1, 0), state.cameraAngle)
     .multiplyScalar(zoom);
   const cameraTarget = lookAt
     .clone()
     .add(orbitOffset)
-    .add(new THREE.Vector3(0, (narrowView ? 7.6 : 5.3 - speedFactor * 1.35) * zoom * state.cameraHeight, 0));
+    .add(new THREE.Vector3(
+      0,
+      (narrowView ? 7.2 : 5.6 - speedFactor * 0.7) * zoom * state.cameraHeight,
+      0,
+    ));
   const shake = state.feedback.shake;
   const shakeOffset = new THREE.Vector3();
   if (shake > 0.001) {
     const jitterA = Math.sin(state.elapsed * 58.7) * 0.5 + Math.sin(state.elapsed * 91.3) * 0.5;
     const jitterB = Math.cos(state.elapsed * 64.1) * 0.5 + Math.sin(state.elapsed * 43.9) * 0.5;
-    const amplitude = shake * 0.075;
+    const amplitude = shake * 0.034;
     shakeOffset
       .copy(basis.right)
       .multiplyScalar(jitterA * amplitude)
       .add(new THREE.Vector3(0, jitterB * amplitude * 0.55, 0));
     cameraTarget.add(shakeOffset);
   }
+  const cameraLookAt = lookAt.clone().addScaledVector(basis.forward, speedFactor * 0.9);
   camera.position.lerp(cameraTarget, 1 - Math.pow(0.001, delta));
-  camera.lookAt(lookAt.addScaledVector(shakeOffset, 0.45));
+  camera.lookAt(cameraLookAt.addScaledVector(shakeOffset, 0.3));
 
   speedEl.textContent = `${Math.round(speed * 13.8)} km/h`;
   angleEl.textContent = `${Math.round(speed < runConfig.angleDisplaySpeed ? 0 : Math.abs(slipAngle) * THREE.MathUtils.RAD2DEG)} deg`;
@@ -2766,10 +2787,20 @@ function resetRun() {
   state.feedback.popupBank = 0;
   state.feedback.popupCooldown = 0;
   state.feedback.impact = 0;
+  state.feedback.shake = 0;
+  state.feedback.driftIntensity = 0;
   state.feedback.comboPulse = 0;
   state.feedback.lastComboStep = 1;
   scorePopupsEl.replaceChildren();
   updateHud();
+}
+
+function resetCameraControls() {
+  state.cameraZoom = 1;
+  state.cameraAngle = 0;
+  state.cameraHeight = 1;
+  cameraZoom.value = '1.00';
+  cameraAngle.value = '0';
 }
 
 function startLevel(levelIndex) {
@@ -2782,6 +2813,7 @@ function startLevel(levelIndex) {
   levelSystem.setLevel(state.level);
   smokeSystem.clear();
   skidSystem.clear();
+  resetCameraControls();
   resetVehicle(true);
   resetRun();
   updateStatusText();
