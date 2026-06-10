@@ -13,6 +13,12 @@ const bestScoreEl = document.querySelector('#best-score');
 const speedEl = document.querySelector('#speed');
 const angleEl = document.querySelector('#angle');
 const statusEl = document.querySelector('#status');
+const driftCalloutEl = document.querySelector('#drift-callout');
+const gearEl = document.querySelector('#gear');
+const rpmBarEl = document.querySelector('#rpm-bar');
+const inputDisplayEls = Object.fromEntries(
+  [...document.querySelectorAll('[data-input]')].map((input) => [input.dataset.input, input]),
+);
 const pauseButton = document.querySelector('#pause-button');
 const restartButton = document.querySelector('#restart-button');
 const modeToggle = document.querySelector('#mode-toggle');
@@ -163,35 +169,37 @@ const runConfig = {
   duration: 90,
   minSpeed: 2.8,
   angleDisplaySpeed: 2.2,
-  minAngle: THREE.MathUtils.degToRad(12),
-  idealAngle: THREE.MathUtils.degToRad(46),
-  maxAngle: THREE.MathUtils.degToRad(78),
-  minRearSlip: 0.32,
+  minAngle: THREE.MathUtils.degToRad(10),
+  idealAngle: THREE.MathUtils.degToRad(52),
+  maxAngle: THREE.MathUtils.degToRad(82),
+  minRearSlip: 0.28,
   breakGrace: 0.45,
-  basePointsPerSecond: 55,
+  basePointsPerSecond: 62,
   sustainRamp: 1.5,
-  comboGain: 0.42,
+  comboGain: 0.48,
   comboDecay: 1.8,
   comboSoftDecay: 0.35,
   maxCombo: 5,
 };
 
 const manualTuning = {
-  steerLimitLowSpeed: 0.82,
-  steerLimitHighSpeed: 0.42,
-  steerFalloffSpeed: 8.2,
+  steerLimitLowSpeed: 0.92,
+  steerLimitHighSpeed: 0.58,
+  steerFalloffSpeed: 11.2,
   throttleReverseScale: 0.58,
   brakingSpeedThreshold: 0.45,
   brakeForce: 9.2,
-  linearDrag: 0.28,
-  maxSpeed: 12.4,
-  yawDamping: 0.52,
-  spinStability: 0.74,
-  steerResponse: 0.0045,
+  linearDrag: 0.34,
+  maxSpeed: 13.2,
+  yawDamping: 0.48,
+  spinStability: 0.58,
+  steerResponse: 0.0028,
+  throttleGripLoss: 0.72,
+  counterSteerAssist: 0.34,
   launchAssistDuration: 10,
   launchDriveForceScale: 1.28,
-  launchSteerScale: 1.04,
-  launchYawDampingScale: 1.2,
+  launchSteerScale: 1.02,
+  launchYawDampingScale: 1.1,
 };
 
 let scene;
@@ -247,6 +255,13 @@ const state = {
     popupCooldown: 0,
     comboPulse: 0,
     lastComboStep: 1,
+    message: 'Ready',
+    messageTime: 0,
+    messageHot: false,
+    lastSlipSign: 0,
+    transitionCooldown: 0,
+    nearWallCooldown: 0,
+    clipCooldown: 0,
   },
   input: {
     up: false,
@@ -283,9 +298,9 @@ const sim = {
   inertia: 4.2,
   driveForce: 16.8,
   frontGrip: 17,
-  rearGrip: 3.35,
+  rearGrip: 3.15,
   frontCornering: 12.5,
-  rearCornering: 5.05,
+  rearCornering: 4.65,
 };
 
 const carCollisionSamples = [
@@ -304,8 +319,8 @@ const levelConfigs = [
         [-14, 16], [-28, 12], [-34, 2], [-30, -8],
       ],
       closed: true,
-      width: 7.5,
-      shoulderWidth: 0.75,
+      width: 9.2,
+      shoulderWidth: 1.15,
       laneColor: 0x5ce8ff,
       edgeColor: 0xff4eb8,
       asphalt: 0x34383b,
@@ -315,25 +330,27 @@ const levelConfigs = [
       spawnLookAt: [-20, -22],
       resetEvery: 3,
       extraWidths: [
-        { pointIndex: 8, radius: 8.5, width: 10 },
+        { pointIndex: 2, radius: 7, width: 11.2 },
+        { pointIndex: 5, radius: 7.5, width: 11 },
+        { pointIndex: 8, radius: 9.5, width: 13 },
       ],
       scoringZones: [
-        { pointIndex: 2, radius: 6.5, multiplier: 1.2, label: 'Entry sweeper' },
-        { pointIndex: 5, radius: 6, multiplier: 1.3, label: 'Underpass exit' },
-        { pointIndex: 8, radius: 7, multiplier: 1.15, label: 'Parking pad' },
+        { pointIndex: 2, radius: 7.4, multiplier: 1.28, label: 'Entry Clip' },
+        { pointIndex: 5, radius: 7.1, multiplier: 1.35, label: 'Wall Ride' },
+        { pointIndex: 8, radius: 8.8, multiplier: 1.22, label: 'Outer Zone' },
       ],
     },
     handling: {
       driveForceScale: 1,
       frontGripScale: 1,
-      rearGripScale: 1,
+      rearGripScale: 0.92,
       frontCorneringScale: 1,
       rearCorneringScale: 1,
-      rearPowerGrip: 1.65,
+      rearPowerGrip: 1.22,
       yawDampingScale: 1,
       dragScale: 1,
       maxSpeedScale: 1,
-      steerScale: 1,
+      steerScale: 1.08,
     },
     scoring: {
       driftRewardMultiplier: 1,
@@ -1102,6 +1119,18 @@ function createScoringZoneMarkers(parent, road, config) {
     emissiveIntensity: 0.42,
     roughness: 0.38,
   });
+  const zonePadMaterial = new THREE.MeshBasicMaterial({
+    color: config.edgeColor,
+    transparent: true,
+    opacity: 0.28,
+    depthWrite: false,
+  });
+  const outerZoneMaterial = new THREE.MeshBasicMaterial({
+    color: config.laneColor,
+    transparent: true,
+    opacity: 0.2,
+    depthWrite: false,
+  });
   const coneGeometry = new THREE.ConeGeometry(0.2, 0.62, 12);
 
   for (const zone of road.scoringZones) {
@@ -1111,9 +1140,20 @@ function createScoringZoneMarkers(parent, road, config) {
       .clone()
       .addScaledVector(frame.normal, side * (frame.width / 2 - 0.7));
 
-    for (let i = 0; i < 3; i += 1) {
+    addFlatRoadBox(parent, markerBase, frame.tangent, 4.4, 0.32, 0.058, zonePadMaterial);
+    addFlatRoadBox(
+      parent,
+      frame.nearest.clone().addScaledVector(frame.normal, -side * (frame.width / 2 - 0.85)),
+      frame.tangent,
+      5.2,
+      0.22,
+      0.057,
+      outerZoneMaterial,
+    );
+
+    for (let i = 0; i < 5; i += 1) {
       const marker = new THREE.Mesh(coneGeometry, markerMaterial);
-      marker.position.copy(markerBase).addScaledVector(frame.tangent, (i - 1) * 0.95);
+      marker.position.copy(markerBase).addScaledVector(frame.tangent, (i - 2) * 0.78);
       marker.position.y = 0.31;
       marker.castShadow = true;
       parent.add(marker);
@@ -2034,32 +2074,33 @@ function createSmokeSystem() {
         particle.sprite.material.opacity = 0;
       }
     },
-    emit(origin, tireVelocity, sideVector, slip) {
+    emit(origin, tireVelocity, sideVector, slip, throttle = 0) {
       if (!getGraphicsProfile().smoke || particles.length === 0) return;
 
       const particle = particles.find((item) => item.age >= item.life);
       if (!particle) return;
 
-      const intensity = THREE.MathUtils.clamp(slip, 0, 1);
+      const speed = tireVelocity.length();
+      const intensity = THREE.MathUtils.clamp(slip * 0.78 + Math.abs(throttle) * 0.34, 0, 1);
       const backward = tireVelocity.clone().multiplyScalar(-1);
       if (backward.lengthSq() < 0.01) backward.set(0, 0, -1);
       backward.normalize();
 
       particle.age = 0;
-      particle.life = 0.62 + intensity * 0.42 + Math.random() * 0.16;
-      particle.startScale = 0.18 + intensity * 0.16;
-      particle.endScale = 0.62 + intensity * 0.72;
+      particle.life = 0.72 + intensity * 0.62 + speed * 0.025 + Math.random() * 0.2;
+      particle.startScale = 0.22 + intensity * 0.24;
+      particle.endScale = 0.95 + intensity * 1.15 + speed * 0.035;
       particle.sprite.visible = true;
       particle.sprite.position.copy(origin);
-      particle.sprite.position.y = 0.055 + Math.random() * 0.045;
+      particle.sprite.position.y = 0.06 + Math.random() * 0.075;
       particle.sprite.scale.setScalar(particle.startScale);
-      particle.sprite.material.opacity = 0.26 + intensity * 0.18;
+      particle.sprite.material.opacity = 0.18 + intensity * 0.3;
       particle.sprite.material.rotation = Math.random() * Math.PI;
       particle.velocity
         .copy(backward)
-        .multiplyScalar(0.62 + intensity * 0.86)
-        .addScaledVector(sideVector, (Math.random() - 0.5) * 0.38);
-      particle.velocity.y += 0.035 + intensity * 0.055;
+        .multiplyScalar(0.45 + intensity * 0.72 + speed * 0.075)
+        .addScaledVector(sideVector, (Math.random() - 0.5) * (0.5 + intensity * 0.32));
+      particle.velocity.y += 0.045 + intensity * 0.075;
     },
     update(delta) {
       for (const particle of particles) {
@@ -2070,8 +2111,8 @@ function createSmokeSystem() {
         particle.sprite.position.addScaledVector(particle.velocity, delta);
         particle.sprite.position.y += delta * (0.018 + t * 0.04);
         particle.sprite.scale.setScalar(THREE.MathUtils.lerp(particle.startScale, particle.endScale, t));
-        particle.sprite.material.opacity = Math.max(0, (1 - t) * (1 - t) * 0.42);
-        particle.sprite.material.rotation += delta * 0.35;
+        particle.sprite.material.opacity = Math.max(0, (1 - t) * (1 - t) * 0.5);
+        particle.sprite.material.rotation += delta * (0.24 + particle.velocity.length() * 0.04);
 
         if (particle.age >= particle.life) particle.sprite.visible = false;
       }
@@ -2128,7 +2169,7 @@ function createTrailMesh(parent, color) {
   let colors;
   let positionAttribute;
   let colorAttribute;
-  const width = 0.23;
+  const width = 0.28;
   const geometry = new THREE.BufferGeometry();
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
@@ -2261,7 +2302,8 @@ function createTrailMesh(parent, color) {
           tangentZ *= inverseLength;
         }
 
-        const halfWidth = width * (0.75 + current.strength * 0.35);
+        const waviness = Math.sin(i * 1.73 + current.position.x * 0.21 + current.position.z * 0.17) * 0.04;
+        const halfWidth = width * (0.72 + current.strength * 0.55 + waviness);
         const normalX = -tangentZ * halfWidth;
         const normalZ = tangentX * halfWidth;
         const vertexIndex = i * 6;
@@ -2272,7 +2314,7 @@ function createTrailMesh(parent, color) {
         positions[vertexIndex + 4] = current.position.y;
         positions[vertexIndex + 5] = current.position.z - normalZ;
 
-        const shade = 0.018 + current.strength * 0.032;
+        const shade = 0.014 + current.strength * 0.062;
         colors[vertexIndex] = shade;
         colors[vertexIndex + 1] = shade;
         colors[vertexIndex + 2] = shade;
@@ -2378,18 +2420,37 @@ function updateVehicle(delta) {
   force.add(frontForce);
   torque += torqueFromForce(frontContact.relative, frontForce);
 
+  const speed = vehicle.velocity.length();
   const brakeForce = controls.brake * manualTuning.brakeForce;
   const driveForce = sim.driveForce * handling.driveForceScale;
   const rearDriveForce = driveForce * vehicle.throttle - Math.sign(rearLong || 1) * brakeForce;
-  const rearSlipFromPower = THREE.MathUtils.clamp((Math.abs(rearDriveForce) - Math.abs(rearLong) * 0.65) / driveForce, 0, 1);
-  const rearGripLimit = THREE.MathUtils.lerp(rearGrip, handling.rearPowerGrip, rearSlipFromPower);
+  const throttlePressure = THREE.MathUtils.clamp(Math.abs(vehicle.throttle), 0, 1);
+  const rearSlipFromPower = THREE.MathUtils.clamp(
+    (Math.abs(rearDriveForce) - Math.abs(rearLong) * 0.48) / driveForce,
+    0,
+    1,
+  );
+  const rearPowerLoss = THREE.MathUtils.clamp(
+    rearSlipFromPower * (0.42 + throttlePressure * manualTuning.throttleGripLoss),
+    0,
+    1,
+  );
+  const rearGripLimit = THREE.MathUtils.lerp(rearGrip, handling.rearPowerGrip, rearPowerLoss);
   const rearLateralForce = THREE.MathUtils.clamp(-rearLat * rearCornering, -rearGripLimit, rearGripLimit);
   const rearForce = basis.right.clone().multiplyScalar(rearLateralForce).addScaledVector(basis.forward, rearDriveForce);
   force.add(rearForce);
   torque += torqueFromForce(rearContact.relative, rearForce);
 
-  const speed = vehicle.velocity.length();
   const slipAngle = speed < runConfig.angleDisplaySpeed ? 0 : signedAngleOnGround(basis.forward, vehicle.velocity);
+  const counterSteerAmount = state.manual
+    && Math.abs(slipAngle) > THREE.MathUtils.degToRad(10)
+    && Math.sign(vehicle.steer) !== Math.sign(slipAngle)
+    ? THREE.MathUtils.clamp(Math.abs(vehicle.steer) / manualTuning.steerLimitLowSpeed, 0, 1)
+    : 0;
+  const counterSteerTorque = -vehicle.yawRate
+    * manualTuning.counterSteerAssist
+    * counterSteerAmount
+    * THREE.MathUtils.clamp(speed / 8, 0, 1);
   const spinStabilityTorque = state.manual
     ? -vehicle.yawRate
       * manualTuning.spinStability
@@ -2406,7 +2467,7 @@ function updateVehicle(delta) {
   const yawControlTorque = state.manual
     ? -vehicle.yawRate * manualTuning.yawDamping * handling.yawDampingScale
     : yawError * 22 - vehicle.yawRate * 1.05;
-  torque += yawControlTorque + spinStabilityTorque;
+  torque += yawControlTorque + spinStabilityTorque + counterSteerTorque;
 
   force.addScaledVector(vehicle.velocity, state.manual ? -manualTuning.linearDrag * handling.dragScale : -0.72);
   vehicle.velocity.addScaledVector(force, delta / sim.mass);
@@ -2429,7 +2490,7 @@ function updateVehicle(delta) {
     1,
   );
   vehicle.rearSlip = THREE.MathUtils.clamp(
-    Math.abs(rearLat) / (2.5 * handling.rearGripScale) + rearSlipFromPower * 0.9 + impact * 0.16,
+    Math.abs(rearLat) / (2.35 * handling.rearGripScale) + rearPowerLoss * 0.95 + impact * 0.16,
     0,
     1,
   );
@@ -2540,6 +2601,7 @@ function resolveVehicleCollisions(vehicle, delta) {
       state.run.invalidTime = Math.max(state.run.invalidTime, runConfig.breakGrace + impact * 0.18);
       state.run.driftDuration = 0;
       state.run.combo = Math.max(1, state.run.combo - impact * 0.42 * Math.max(1, delta * 10));
+      setDriftMessage(impact > 0.48 ? 'Wall Hit' : 'Wall Tap');
     }
 
     return impact;
@@ -2617,6 +2679,29 @@ function rotateLocalNormal(x, z, rotation) {
   return new THREE.Vector3(x * cos + z * sin, 0, -x * sin + z * cos).normalize();
 }
 
+function resolveCameraObstruction(lookAt, desiredPosition) {
+  if (activeColliders.length === 0) return desiredPosition;
+
+  const segment = desiredPosition.clone().sub(lookAt);
+  let clearT = 1;
+  for (let step = 3; step <= 18; step += 1) {
+    const t = step / 18;
+    const probe = lookAt.clone().addScaledVector(segment, t);
+    for (const collider of activeColliders) {
+      if (!testColliderContact(probe, 0.48, collider)) continue;
+      clearT = Math.min(clearT, Math.max(0.22, t - 0.08));
+      break;
+    }
+    if (clearT < 1) break;
+  }
+
+  if (clearT >= 1) return desiredPosition;
+  return lookAt
+    .clone()
+    .addScaledVector(segment, clearT)
+    .add(new THREE.Vector3(0, 0.45, 0));
+}
+
 function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle)) {
   const vehicle = state.vehicle;
   const { speed, slipAngle } = telemetry;
@@ -2624,11 +2709,18 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
   car.root.position.copy(vehicle.position);
   car.root.rotation.y = vehicle.yaw;
 
-  const rollTarget = -vehicle.lateralG * 0.09;
-  const pitchTarget = -vehicle.throttle * vehicle.rearSlip * 0.035 + Math.sin(state.elapsed * 15) * vehicle.rearSlip * 0.008;
+  const visualSlip = THREE.MathUtils.clamp(slipAngle / THREE.MathUtils.degToRad(70), -1, 1);
+  const rollTarget = -vehicle.lateralG * 0.13 - visualSlip * 0.025;
+  const pitchTarget = -vehicle.throttle * vehicle.rearSlip * 0.065
+    + Math.abs(vehicle.steer) * 0.018
+    + Math.sin(state.elapsed * 15) * vehicle.rearSlip * 0.01;
+  const yawTarget = -visualSlip * vehicle.rearSlip * 0.045;
   car.sprung.rotation.z = THREE.MathUtils.lerp(car.sprung.rotation.z, rollTarget, 1 - Math.pow(0.002, delta));
   car.sprung.rotation.x = THREE.MathUtils.lerp(car.sprung.rotation.x, pitchTarget, 1 - Math.pow(0.002, delta));
-  car.sprung.position.y = 0.03 + vehicle.rearSlip * 0.035 + Math.sin(state.elapsed * 18) * vehicle.rearSlip * 0.012;
+  car.sprung.rotation.y = THREE.MathUtils.lerp(car.sprung.rotation.y, yawTarget, 1 - Math.pow(0.002, delta));
+  car.sprung.position.y = 0.03 - Math.abs(vehicle.throttle) * vehicle.rearSlip * 0.025
+    + Math.abs(vehicle.lateralG) * 0.018
+    + Math.sin(state.elapsed * 18) * vehicle.rearSlip * 0.012;
 
   for (const wheel of car.wheels) {
     const showWheelBlur = getGraphicsProfile().wheelBlur;
@@ -2645,47 +2737,65 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
     }
   }
 
-  const lookAt = vehicle.position.clone().add(new THREE.Vector3(0, 0.82, 0));
+  const anchor = vehicle.position.clone().add(new THREE.Vector3(0, 0.72, 0));
   const narrowView = window.innerWidth < 560;
+  const portraitView = window.innerHeight > window.innerWidth * 1.25;
   const basis = getVehicleBasis(vehicle.yaw);
   const zoom = state.cameraZoom;
   const speedFactor = THREE.MathUtils.clamp(speed / 12, 0, 1);
-  const targetFov = getResponsiveFov() + speedFactor * (narrowView ? 5 : 7);
+  const driftBias = THREE.MathUtils.clamp(slipAngle / THREE.MathUtils.degToRad(68), -1, 1);
+  const velocityDir = speed > 0.15
+    ? vehicle.velocity.clone().setY(0).normalize()
+    : basis.forward.clone();
+  const chaseDirection = basis.forward
+    .clone()
+    .lerp(velocityDir, speedFactor * 0.42)
+    .normalize();
+  const targetFov = getResponsiveFov() + speedFactor * (narrowView ? 4 : 5.5);
   camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.pow(0.02, delta));
   camera.updateProjectionMatrix();
 
-  const forwardCameraOffset = basis.forward.clone().multiplyScalar(
-    narrowView ? -9.2 - speedFactor * 1.7 : -7.2 - speedFactor * 2.8,
-  );
-  const orbitOffset = forwardCameraOffset
+  const distance = (portraitView ? 14.2 : narrowView ? 10.2 : 9.4) + speedFactor * (narrowView ? 1.8 : 2.2);
+  const height = (portraitView ? 5.8 : narrowView ? 4.6 : 3.65) + speedFactor * 0.38;
+  const revealOffset = basis.right.clone().multiplyScalar(-driftBias * (portraitView ? 0.55 : narrowView ? 0.85 : 1.35));
+  const orbitOffset = chaseDirection
+    .clone()
+    .multiplyScalar(-distance)
+    .add(revealOffset)
     .applyAxisAngle(new THREE.Vector3(0, 1, 0), state.cameraAngle)
     .multiplyScalar(zoom);
-  const cameraTarget = lookAt
+  const cameraTarget = anchor
     .clone()
     .add(orbitOffset)
-    .add(new THREE.Vector3(
-      0,
-      (narrowView ? 7.2 : 5.6 - speedFactor * 0.7) * zoom * state.cameraHeight,
-      0,
-    ));
+    .add(new THREE.Vector3(0, height * zoom * state.cameraHeight, 0));
+  const cameraLookAt = anchor
+    .clone()
+    .addScaledVector(basis.forward, 2.8 + speedFactor * 1.4)
+    .addScaledVector(velocityDir, speedFactor * 2.5)
+    .addScaledVector(basis.right, -driftBias * 1.3);
   const shake = state.feedback.shake;
   const shakeOffset = new THREE.Vector3();
   if (shake > 0.001) {
     const jitterA = Math.sin(state.elapsed * 58.7) * 0.5 + Math.sin(state.elapsed * 91.3) * 0.5;
     const jitterB = Math.cos(state.elapsed * 64.1) * 0.5 + Math.sin(state.elapsed * 43.9) * 0.5;
-    const amplitude = shake * 0.034;
+    const amplitude = shake * 0.028;
     shakeOffset
       .copy(basis.right)
       .multiplyScalar(jitterA * amplitude)
       .add(new THREE.Vector3(0, jitterB * amplitude * 0.55, 0));
     cameraTarget.add(shakeOffset);
   }
-  const cameraLookAt = lookAt.clone().addScaledVector(basis.forward, speedFactor * 0.9);
-  camera.position.lerp(cameraTarget, 1 - Math.pow(0.001, delta));
-  camera.lookAt(cameraLookAt.addScaledVector(shakeOffset, 0.3));
+  const cameraTargetClear = resolveCameraObstruction(cameraLookAt, cameraTarget);
+  camera.position.lerp(cameraTargetClear, 1 - Math.pow(0.0007, delta));
+  camera.lookAt(cameraLookAt.addScaledVector(shakeOffset, 0.28));
+  camera.rotateZ(-driftBias * 0.035 * state.feedback.driftIntensity);
 
   speedEl.textContent = `${Math.round(speed * 13.8)} km/h`;
   angleEl.textContent = `${Math.round(speed < runConfig.angleDisplaySpeed ? 0 : Math.abs(slipAngle) * THREE.MathUtils.RAD2DEG)} deg`;
+  const gear = speed < 2.4 ? 1 : Math.min(5, Math.floor(speed / 2.6) + 1);
+  const rpm = THREE.MathUtils.clamp((speed / manualTuning.maxSpeed) * 0.72 + Math.abs(vehicle.throttle) * 0.24 + vehicle.rearSlip * 0.22, 0, 1);
+  if (gearEl) gearEl.textContent = String(gear);
+  if (rpmBarEl) rpmBarEl.style.width = `${Math.round(rpm * 100)}%`;
   return telemetry;
 }
 
@@ -2791,6 +2901,13 @@ function resetRun() {
   state.feedback.driftIntensity = 0;
   state.feedback.comboPulse = 0;
   state.feedback.lastComboStep = 1;
+  state.feedback.message = 'Ready';
+  state.feedback.messageTime = 1.2;
+  state.feedback.messageHot = false;
+  state.feedback.lastSlipSign = 0;
+  state.feedback.transitionCooldown = 0;
+  state.feedback.nearWallCooldown = 0;
+  state.feedback.clipCooldown = 0;
   scorePopupsEl.replaceChildren();
   updateHud();
 }
@@ -2916,9 +3033,11 @@ function updateScoring(delta, telemetry) {
   const run = state.run;
   const speed = telemetry.speed;
   const angle = Math.abs(telemetry.slipAngle);
+  const slipSign = Math.sign(telemetry.slipAngle);
   const rearSlip = state.vehicle.rearSlip;
   const roadFrame = getRoadFrame(state.vehicle.position);
   const onRoad = roadFrame.inside;
+  const previousCombo = run.combo;
   const validDrift = state.manual
     && onRoad
     && speed >= runConfig.minSpeed
@@ -2934,9 +3053,14 @@ function updateScoring(delta, telemetry) {
     state.feedback.lastComboStep = Math.max(1, Math.floor(run.combo));
     if (run.invalidTime > runConfig.breakGrace) {
       run.driftDuration = 0;
+      state.feedback.lastSlipSign = 0;
       run.combo = Math.max(1, run.combo - runConfig.comboDecay * delta);
     } else {
       run.combo = Math.max(1, run.combo - runConfig.comboSoftDecay * delta);
+    }
+    if (previousCombo >= 1.8 && run.combo <= 1.05 && run.invalidTime > runConfig.breakGrace) {
+      setDriftMessage('Combo Lost');
+      createScorePopup('Combo Lost');
     }
     return;
   }
@@ -2957,7 +3081,12 @@ function updateScoring(delta, telemetry) {
     THREE.MathUtils.clamp((rearSlip - runConfig.minRearSlip) / (1 - runConfig.minRearSlip), 0, 1),
   );
   const sustainFactor = THREE.MathUtils.clamp(run.driftDuration / runConfig.sustainRamp, 0.45, 1);
-  const levelMultiplier = getActiveLevelConfig().scoring.driftRewardMultiplier * getActiveScoringZoneMultiplier();
+  const zoneMultiplier = getActiveScoringZoneMultiplier();
+  const nearWallFactor = getNearWallFactor(roadFrame);
+  const transitionBonus = getTransitionBonus(slipSign);
+  const levelMultiplier = getActiveLevelConfig().scoring.driftRewardMultiplier
+    * zoneMultiplier
+    * (1 + nearWallFactor * 0.18);
   const previousComboStep = Math.floor(run.combo);
 
   run.combo = Math.min(
@@ -2971,14 +3100,37 @@ function updateScoring(delta, telemetry) {
     * sustainFactor
     * run.combo
     * levelMultiplier;
-  const earned = run.pointsPerSecond * delta;
+  const earned = run.pointsPerSecond * delta + transitionBonus;
   run.score += earned;
   state.feedback.popupBank += earned;
+
+  if (transitionBonus > 0) {
+    setDriftMessage(`Transition +${transitionBonus}`, true);
+    createScorePopup(`Transition +${transitionBonus}`, true);
+  } else if (nearWallFactor > 0.7 && state.feedback.nearWallCooldown <= 0) {
+    const bonus = Math.round(nearWallFactor * 55);
+    run.score += bonus;
+    state.feedback.popupBank += bonus;
+    state.feedback.nearWallCooldown = 0.85;
+    setDriftMessage(`Near Wall +${bonus}`, true);
+    createScorePopup(`Near Wall +${bonus}`);
+  } else if (zoneMultiplier > 1.08 && state.feedback.clipCooldown <= 0) {
+    state.feedback.clipCooldown = 1.15;
+    setDriftMessage('Perfect Line', true);
+    createScorePopup('Perfect Line');
+  } else if (angle > THREE.MathUtils.degToRad(58)) {
+    setDriftMessage('Insane Angle', true);
+  } else if (angle > THREE.MathUtils.degToRad(42)) {
+    setDriftMessage('Great Angle');
+  } else if (run.driftDuration > 0.7) {
+    setDriftMessage('Good Drift');
+  }
 
   const comboStep = Math.floor(run.combo);
   if (comboStep > previousComboStep && comboStep > state.feedback.lastComboStep && comboStep >= 2) {
     state.feedback.comboPulse = 0.45;
     state.feedback.lastComboStep = comboStep;
+    setDriftMessage(`Combo x${run.combo.toFixed(1)}`, true);
     createScorePopup(`x${run.combo.toFixed(1)}`, true);
   }
 
@@ -2987,6 +3139,26 @@ function updateScoring(delta, telemetry) {
     state.feedback.popupBank = 0;
     state.feedback.popupCooldown = 0.65;
   }
+}
+
+function getTransitionBonus(slipSign) {
+  if (slipSign === 0) return 0;
+  const previousSign = state.feedback.lastSlipSign;
+  state.feedback.lastSlipSign = slipSign;
+  if (previousSign === 0 || previousSign === slipSign || state.feedback.transitionCooldown > 0) return 0;
+  state.feedback.transitionCooldown = 1.25;
+  return 120;
+}
+
+function getNearWallFactor(roadFrame) {
+  const edgeDistance = roadFrame.width / 2 + activeRoad.config.shoulderWidth - Math.abs(roadFrame.signedDistance);
+  return THREE.MathUtils.clamp((1.2 - edgeDistance) / 1.2, 0, 1);
+}
+
+function setDriftMessage(message, hot = false) {
+  state.feedback.message = message;
+  state.feedback.messageTime = hot ? 1.15 : 0.55;
+  state.feedback.messageHot = hot;
 }
 
 function getActiveScoringZoneMultiplier() {
@@ -3074,7 +3246,17 @@ function updateFeedbackVisuals(delta) {
 
   state.feedback.popupCooldown = Math.max(0, state.feedback.popupCooldown - delta);
   state.feedback.comboPulse = Math.max(0, state.feedback.comboPulse - delta);
+  state.feedback.messageTime = Math.max(0, state.feedback.messageTime - delta);
+  state.feedback.transitionCooldown = Math.max(0, state.feedback.transitionCooldown - delta);
+  state.feedback.nearWallCooldown = Math.max(0, state.feedback.nearWallCooldown - delta);
+  state.feedback.clipCooldown = Math.max(0, state.feedback.clipCooldown - delta);
   comboEl.classList.toggle('is-pulsing', state.feedback.comboPulse > 0);
+  driftCalloutEl.textContent = state.feedback.messageTime > 0 ? state.feedback.message : 'Hold Angle';
+  driftCalloutEl.classList.toggle('is-hot', state.feedback.messageHot && state.feedback.messageTime > 0);
+
+  for (const action of movementActions) {
+    inputDisplayEls[action]?.classList.toggle('is-active', state.input[action]);
+  }
 }
 
 function getDriftIntensity(telemetry) {
@@ -3589,7 +3771,9 @@ function updateEffects(delta) {
   const contacts = vehicle.contacts;
   if (!contacts) return;
 
-  state.smokeAccumulator += delta * (14 + vehicle.rearSlip * 46);
+  const throttle = Math.abs(vehicle.throttle);
+  const speed = vehicle.velocity.length();
+  state.smokeAccumulator += delta * (10 + vehicle.rearSlip * 58 + throttle * 18 + speed * 1.6);
   const emissions = Math.floor(state.smokeAccumulator);
   state.smokeAccumulator -= emissions;
 
@@ -3597,13 +3781,13 @@ function updateEffects(delta) {
   for (const contact of contacts) {
     if (contact.front) continue;
 
-    const slip = contact.slip;
-    if (slip > 0.18) skidSystem.add(rearIndex, contact.position, slip);
+    const slip = THREE.MathUtils.clamp(contact.slip * 0.82 + throttle * 0.28, 0, 1);
+    if (slip > 0.16) skidSystem.add(rearIndex, contact.position, slip);
 
-    if (slip > 0.24) {
-      const count = Math.min(4, emissions);
+    if (slip > 0.2) {
+      const count = Math.min(6, emissions);
       for (let n = 0; n < count; n += 1) {
-        smokeSystem.emit(contact.position, contact.velocity, contact.side, slip);
+        smokeSystem.emit(contact.position, contact.velocity, contact.side, slip, throttle);
       }
     }
 
@@ -3770,7 +3954,7 @@ function onResize() {
 }
 
 function getResponsiveFov() {
-  return window.innerWidth < 560 ? 58 : 48;
+  return window.innerWidth < 560 ? 61 : 58;
 }
 
 function getRenderPixelRatio() {

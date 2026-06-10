@@ -73,21 +73,24 @@ body {
 
 .score-popups {
   position: fixed;
-  top: clamp(94px, 16vw, 164px);
-  left: clamp(26px, 4vw, 48px);
+  top: clamp(108px, 15vh, 150px);
+  left: 50%;
   display: grid;
   gap: 4px;
-  width: 120px;
+  width: min(260px, 72vw);
+  justify-items: center;
   pointer-events: none;
+  transform: translateX(-50%);
   z-index: 3;
 }
 
 .score-popup {
   color: #ffdd67;
-  font-size: 1.1rem;
+  font-size: clamp(1rem, 2.8vw, 1.5rem);
   font-weight: 950;
   line-height: 1;
-  text-shadow: 0 2px 14px rgb(0 0 0 / 72%);
+  text-align: center;
+  text-shadow: 0 2px 14px rgb(0 0 0 / 80%);
   animation: score-rise 820ms ease-out forwards;
 }
 
@@ -98,38 +101,14 @@ body {
 
 .hud {
   position: fixed;
-  top: clamp(12px, 3vw, 28px);
-  left: clamp(12px, 3vw, 28px);
-  display: grid;
-  gap: 12px;
-  width: min(340px, calc(100vw - 24px));
-  padding: 14px 16px;
-  border: 1px solid rgb(255 255 255 / 16%);
-  border-radius: 8px;
-  background: rgb(8 9 11 / 72%);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 28%);
-  backdrop-filter: blur(14px);
-  pointer-events: auto;
+  inset: 0;
+  pointer-events: none;
   transition: opacity 160ms ease, transform 160ms ease;
   z-index: 4;
 }
 
-.hud.is-drifting {
-  border-color: rgb(255 221 103 / 38%);
-  box-shadow:
-    0 18px 48px rgb(0 0 0 / 28%),
-    0 0 24px rgb(255 221 103 / 13%);
-}
-
 .hud[hidden] {
   display: none;
-}
-
-.hud > div:first-child {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
 }
 
 .label {
@@ -142,56 +121,250 @@ body {
 
 strong {
   color: #ffdd67;
-  font-size: clamp(1.1rem, 4vw, 1.55rem);
+  font-size: clamp(1.1rem, 4vw, 1.7rem);
   font-weight: 900;
   line-height: 1;
 }
 
-dl {
+.score-hud {
+  position: absolute;
+  top: clamp(14px, 3vh, 28px);
+  left: 50%;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 0;
+  justify-items: center;
+  gap: 2px;
+  min-width: min(330px, 78vw);
+  padding: 12px 22px 10px;
+  border-bottom: 1px solid rgb(255 221 103 / 34%);
+  background:
+    linear-gradient(90deg, transparent, rgb(6 8 8 / 72%) 16%, rgb(6 8 8 / 82%) 84%, transparent),
+    linear-gradient(90deg, rgb(92 232 255 / 0%), rgb(92 232 255 / 18%) 50%, rgb(92 232 255 / 0%));
+  filter: drop-shadow(0 14px 28px rgb(0 0 0 / 34%));
+  transform: translateX(-50%);
 }
 
-dl div {
+.score-hud #score {
+  color: #f7f7ef;
+  font-size: clamp(2.4rem, 7vw, 4.2rem);
+  line-height: 0.9;
+  text-shadow: 0 3px 20px rgb(0 0 0 / 74%);
+}
+
+.score-hud #combo {
+  color: #5ce8ff;
+  font-size: clamp(1.1rem, 3vw, 1.55rem);
+  font-weight: 950;
+  text-shadow: 0 0 18px rgb(92 232 255 / 34%);
+}
+
+.drift-callout {
+  position: absolute;
+  top: clamp(96px, 16vh, 136px);
+  left: 50%;
+  min-width: 160px;
+  padding: 7px 16px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 999px;
+  background: rgb(7 9 10 / 62%);
+  color: #f4f6f0;
+  font-size: clamp(0.86rem, 2vw, 1rem);
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.drift-callout.is-hot {
+  border-color: rgb(255 221 103 / 52%);
+  color: #ffdd67;
+  box-shadow: 0 0 24px rgb(255 221 103 / 20%);
+}
+
+.run-meta {
+  position: absolute;
+  top: clamp(14px, 3vh, 28px);
+  right: clamp(12px, 3vw, 28px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  color: #d9ded8;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 72%);
+}
+
+.run-meta strong {
+  font-size: 0.95rem;
+}
+
+.speed-hud {
+  position: absolute;
+  right: clamp(14px, 4vw, 44px);
+  bottom: clamp(18px, 5vh, 42px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: min(280px, 70vw);
+  padding: 14px 16px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgb(7 8 9 / 78%), rgb(15 18 17 / 58%));
+  box-shadow: 0 18px 42px rgb(0 0 0 / 34%);
+  backdrop-filter: blur(12px);
+}
+
+.gear-stack {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  aspect-ratio: 1;
+  border: 1px solid rgb(92 232 255 / 36%);
+  border-radius: 999px;
+  background: rgb(92 232 255 / 8%);
+}
+
+.gear-stack strong {
+  color: #f4f6f0;
+  font-size: 1.85rem;
+}
+
+.speed-stack {
+  display: grid;
+  gap: 5px;
   min-width: 0;
-  padding-top: 10px;
-  border-top: 1px solid rgb(255 255 255 / 14%);
+  flex: 1;
 }
 
-dt {
-  color: #8ea39d;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0;
+#speed {
+  color: #f4f6f0;
+  font-size: clamp(1.6rem, 5vw, 2.5rem);
+  font-weight: 950;
+  line-height: 0.95;
+}
+
+#angle {
+  color: #ffdd67;
+  font-size: 0.9rem;
+  font-weight: 900;
   text-transform: uppercase;
 }
 
-dd {
-  margin: 4px 0 0;
-  color: #f4f6f0;
-  font-size: clamp(1rem, 3vw, 1.28rem);
-  font-weight: 800;
-  line-height: 1.1;
+.rpm-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 14%);
+}
+
+#rpm-bar {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #5ce8ff 0%, #ffdd67 58%, #ff632c 100%);
+  box-shadow: 0 0 16px rgb(255 221 103 / 34%);
+  transition: width 80ms linear;
+}
+
+.input-hud {
+  position: absolute;
+  left: clamp(14px, 3vw, 28px);
+  bottom: clamp(18px, 5vh, 42px);
+  display: grid;
+  grid-template-columns: repeat(3, 28px);
+  gap: 5px;
+}
+
+.input-hud span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  aspect-ratio: 1;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 4px;
+  background: rgb(8 9 11 / 48%);
+  color: #aeb7b4;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.input-hud [data-input="up"] {
+  grid-column: 2;
+}
+
+.input-hud [data-input="left"] {
+  grid-column: 1;
+}
+
+.input-hud [data-input="down"] {
+  grid-column: 2;
+}
+
+.input-hud [data-input="right"] {
+  grid-column: 3;
+}
+
+.input-hud span.is-active {
+  border-color: rgb(255 221 103 / 64%);
+  background: #ffdd67;
+  color: #11140f;
 }
 
 #combo.is-pulsing {
-  color: #5ce8ff;
-  transform: scale(1.08);
-  transform-origin: left center;
+  color: #ffdd67;
+  transform: scale(1.12);
+  transform-origin: center;
   transition: color 80ms ease, transform 80ms ease;
 }
 
-.controls {
+.debug-controls {
+  position: absolute;
+  top: clamp(56px, 9vh, 86px);
+  left: clamp(12px, 3vw, 28px);
   display: grid;
   gap: 9px;
-  padding-top: 10px;
-  border-top: 1px solid rgb(255 255 255 / 14%);
+  width: min(260px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 8px;
+  background: rgb(8 9 11 / 70%);
+  color: #aeb7b4;
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
 }
 
-.controls button {
+.debug-controls summary {
+  color: #ffdd67;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.debug-controls:not([open]) {
+  width: auto;
+  padding: 8px 10px;
+}
+
+.debug-controls:not([open]) > :not(summary) {
+  display: none;
+}
+
+.debug-controls[open] {
+  display: grid;
+}
+
+.debug-controls button {
   min-height: 34px;
+}
+
+.debug-controls label {
+  line-height: 1.1;
 }
 
 button {
@@ -504,11 +677,47 @@ h2 {
 }
 
 @media (max-width: 520px) {
-  .hud {
+  .score-hud {
+    top: 10px;
+    min-width: min(300px, 82vw);
+    padding: 10px 18px 8px;
+  }
+
+  .drift-callout {
+    top: 90px;
+    max-width: calc(100vw - 32px);
+  }
+
+  .run-meta {
     top: auto;
+    right: 14px;
+    bottom: 142px;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    font-size: 0.68rem;
+  }
+
+  .speed-hud {
+    right: 12px;
     bottom: 12px;
-    padding: 12px;
-    gap: 9px;
+    min-width: min(230px, calc(100vw - 96px));
+    padding: 11px 12px;
+  }
+
+  .gear-stack {
+    width: 48px;
+  }
+
+  .input-hud {
+    left: 12px;
+    bottom: 14px;
+  }
+
+  .debug-controls {
+    top: 112px;
+    left: 12px;
+    max-width: calc(100vw - 24px);
   }
 
   button {
@@ -525,9 +734,9 @@ h2 {
   }
 
   .score-popups {
-    top: auto;
-    bottom: 228px;
-    left: 22px;
+    top: 132px;
+    bottom: auto;
+    left: 50%;
   }
 
   .drift-feedback::after {
