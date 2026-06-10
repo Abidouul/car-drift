@@ -80,7 +80,7 @@ const defaultKeyBindings = {
 const carConfigs = [
   {
     id: 'porsche',
-    name: 'Porsche Drift Build',
+    name: 'Apex GT Drift Build',
     bay: 'Preview bay 01',
     stats: {
       Power: '610 HP',
@@ -113,7 +113,7 @@ const carConfigs = [
   },
   {
     id: 'e30',
-    name: 'BMW E30 Drift Build',
+    name: 'Retro 30 Drift Build',
     bay: 'Preview bay 02',
     stats: {
       Power: '420 HP',
