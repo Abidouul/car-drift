@@ -11,38 +11,37 @@
       <canvas id="scene"></canvas>
       <div class="drift-feedback" aria-hidden="true"></div>
       <div class="score-popups" aria-hidden="true"></div>
-      <section class="hud" aria-label="Simulation status">
-        <div>
-          <span class="label">Drift Donut</span>
-          <strong id="status">Looping</strong>
+      <section class="hud" aria-label="Driving HUD">
+        <div class="score-hud" aria-label="Score">
+          <span class="label">Drift Score</span>
+          <strong id="score">0</strong>
+          <span id="combo">x1.0</span>
         </div>
-        <dl>
-          <div>
-            <dt>Score</dt>
-            <dd id="score">0</dd>
+        <div id="drift-callout" class="drift-callout" aria-live="polite">Ready</div>
+        <div class="run-meta" aria-label="Run status">
+          <span id="status">Looping</span>
+          <span>Time <strong id="timer">90</strong></span>
+          <span>Best <strong id="best-score">0</strong></span>
+        </div>
+        <div class="speed-hud" aria-label="Speed and angle">
+          <div class="gear-stack">
+            <span class="label">Gear</span>
+            <strong id="gear">1</strong>
           </div>
-          <div>
-            <dt>Combo</dt>
-            <dd id="combo">x1.0</dd>
+          <div class="speed-stack">
+            <span id="speed">78 km/h</span>
+            <span id="angle">42 deg</span>
+            <div class="rpm-track" aria-hidden="true"><span id="rpm-bar"></span></div>
           </div>
-          <div>
-            <dt>Timer</dt>
-            <dd id="timer">90</dd>
-          </div>
-          <div>
-            <dt>Best</dt>
-            <dd id="best-score">0</dd>
-          </div>
-          <div>
-            <dt>Speed</dt>
-            <dd id="speed">78 km/h</dd>
-          </div>
-          <div>
-            <dt>Angle</dt>
-            <dd id="angle">42 deg</dd>
-          </div>
-        </dl>
-        <div class="controls">
+        </div>
+        <div class="input-hud" aria-label="Input display" aria-hidden="true">
+          <span data-input="up">W</span>
+          <span data-input="left">A</span>
+          <span data-input="down">S</span>
+          <span data-input="right">D</span>
+        </div>
+        <details class="debug-controls">
+          <summary>Tools</summary>
           <button id="pause-button" type="button">Pause</button>
           <button id="restart-button" type="button">Restart run</button>
           <button id="mode-toggle" type="button">Play manual</button>
@@ -54,7 +53,7 @@
             <span>Camera angle</span>
             <input id="camera-angle" type="range" min="-180" max="180" step="1" value="0" />
           </label>
-        </div>
+        </details>
       </section>
       <section class="menu-overlay" data-screen="menu" aria-label="Game menu">
         <div class="menu-panel menu-panel-main" data-panel="main">
@@ -64,6 +63,101 @@
             <button id="play-button" type="button">Play</button>
             <button id="options-button" type="button">Options</button>
             <button id="quit-button" type="button">Quit</button>
+          </div>
+        </div>
+
+        <div class="menu-panel car-select-panel" data-panel="cars" hidden>
+          <div class="car-select-heading">
+            <p class="eyebrow">Garage select</p>
+            <h2>Choose Your Drift Machine</h2>
+          </div>
+          <div class="car-grid" aria-label="Car selection">
+            <article class="car-card is-selected" data-car-card="porsche">
+              <div class="car-preview-panel">
+                <span>Preview bay 01</span>
+                <div class="car-art car-art-porsche" aria-hidden="true">
+                  <i class="car-shadow"></i>
+                  <i class="car-wing"></i>
+                  <i class="car-body"></i>
+                  <i class="car-cabin"></i>
+                  <i class="car-splitter"></i>
+                  <i class="car-stripe"></i>
+                  <i class="car-wheel car-wheel-front"></i>
+                  <i class="car-wheel car-wheel-rear"></i>
+                </div>
+              </div>
+              <div class="car-card-body">
+                <h3>Porsche Drift Build</h3>
+                <dl class="car-stats">
+                  <div>
+                    <dt>Power</dt>
+                    <dd>610 HP</dd>
+                  </div>
+                  <div>
+                    <dt>Handling</dt>
+                    <dd>86</dd>
+                  </div>
+                  <div>
+                    <dt>Drift Angle</dt>
+                    <dd>92</dd>
+                  </div>
+                  <div>
+                    <dt>Grip</dt>
+                    <dd>74</dd>
+                  </div>
+                  <div>
+                    <dt>Weight</dt>
+                    <dd>1280 kg</dd>
+                  </div>
+                </dl>
+                <button type="button" data-select-car="porsche">Select Car</button>
+              </div>
+            </article>
+            <article class="car-card" data-car-card="e30">
+              <div class="car-preview-panel">
+                <span>Preview bay 02</span>
+                <div class="car-art car-art-e30" aria-hidden="true">
+                  <i class="car-shadow"></i>
+                  <i class="car-wing"></i>
+                  <i class="car-body"></i>
+                  <i class="car-cabin"></i>
+                  <i class="car-bash"></i>
+                  <i class="car-stripe"></i>
+                  <i class="car-wheel car-wheel-front"></i>
+                  <i class="car-wheel car-wheel-rear"></i>
+                </div>
+              </div>
+              <div class="car-card-body">
+                <h3>BMW E30 Drift Build</h3>
+                <dl class="car-stats">
+                  <div>
+                    <dt>Power</dt>
+                    <dd>420 HP</dd>
+                  </div>
+                  <div>
+                    <dt>Handling</dt>
+                    <dd>90</dd>
+                  </div>
+                  <div>
+                    <dt>Drift Angle</dt>
+                    <dd>88</dd>
+                  </div>
+                  <div>
+                    <dt>Grip</dt>
+                    <dd>69</dd>
+                  </div>
+                  <div>
+                    <dt>Weight</dt>
+                    <dd>1120 kg</dd>
+                  </div>
+                </dl>
+                <button class="secondary-button" type="button" data-select-car="e30">Select Car</button>
+              </div>
+            </article>
+          </div>
+          <div class="car-select-footer">
+            <button class="secondary-button" type="button" data-back-menu>Back</button>
+            <button id="car-continue" type="button">Continue to Map Selection</button>
           </div>
         </div>
 
@@ -84,7 +178,7 @@
               <small>Wide dock roads, container chicane, cranes, warehouses, practice pad</small>
             </button>
           </div>
-          <button class="secondary-button" type="button" data-back-menu>Back</button>
+          <button id="level-back-button" class="secondary-button" type="button">Back</button>
         </div>
 
         <div class="menu-panel" data-panel="pause" hidden>
