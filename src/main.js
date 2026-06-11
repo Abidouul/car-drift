@@ -745,6 +745,16 @@ function setupEventListeners() {
     state.pointer.active = false;
   });
 
+  // Safety net: if the matching pointerup never reaches the canvas (released
+  // over an overlay, outside the window, or synthetic input), the drag must
+  // still end - otherwise every later mouse move silently orbits the camera.
+  window.addEventListener('pointerup', () => {
+    state.pointer.active = false;
+  });
+  window.addEventListener('blur', () => {
+    state.pointer.active = false;
+  });
+
   canvas.addEventListener('wheel', (event) => {
     if (state.screen !== 'playing') return;
     event.preventDefault();

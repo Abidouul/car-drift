@@ -91,3 +91,50 @@ and a mobile overlap between the controls hint and the HUD.
 **Recommended next steps:** touch controls (on-screen steer/throttle zones), engine
 audio polish, a third car using the now-flexible hull-section system, ghost/best-lap
 trails, and the main.js modularization.
+
+### 2026-06-11 (later) — Handbrake + visual overhaul (branch `feat/visual-overhaul`)
+
+**Goal:** Handbrake on Space for easier drifting, more realistic car models, bigger and
+better-looking maps with real environments, best-achievable graphics.
+
+**Files changed:** `src/main.js`, `src/carPreview.js`, `index.html`, `src/style.css`,
+`CLAUDE.md`.
+
+**What changed and why:**
+1. `71fb445` Handbrake — new rebindable action (default Space) in the bindings system,
+   options panel, and first-run hint. Held: rear lateral grip/cornering cut ~55-60%,
+   drive torque cut 85%, rear longitudinal speed dragged toward zero; locked rears stop
+   spinning and raise slip so smoke/skids/scoring all react. Driving keys are captured
+   only while playing so Space still activates focused menu buttons.
+2. `30e716f` Image-based lighting — PMREM RoomEnvironment on the main scene (subtle)
+   and preview scenes (studio); default preset now high on desktop / low on small
+   machines (was medium/lowest — the game shipped needlessly pixelated).
+3. `4d7c828` Car models — hull cross-sections Catmull-Rom subdivided with a tumblehome
+   belt point (smooth pressed-steel sides); fake hood/deck slabs removed so painted
+   bodywork shows; proper greenhouse (inset glass, flush body-color roof, A/C pillars);
+   integrated bumpers (body-color RS wraps, chrome E3 blades).
+4. `70680b6` Tracks — 1.55x uniform road scale through the whole pipeline (points, pad
+   and zone radii, spawns); lanes widened to 9.2/7.8/9.6 m; 300 m textured terrain
+   replaces the dev grid; per-level gradient sky domes + star field; thinner fog.
+5. `253cb47` Environments — shared kit (seeded scatter with true road clearance,
+   instanced pines, lit-window tower materials, billboards). Urban: mid-rises with
+   colliders + 16-tower lit skyline + billboards + denser lamps. Touge: 150 instanced
+   pines, ridge line, moon. Dock: reflective harbor sheet, quay with bollards,
+   instanced container yard.
+6. Final fix — stuck camera-drag: if a pointerup never reached the canvas (released
+   over an overlay/outside the window), every subsequent mouse move silently orbited
+   the camera toward top-down; window-level pointerup/blur listeners now end drags.
+
+**Tests/builds:** `npm run build` clean per commit. Browser-verified: handbrake flick
+reaches valid drift with smoke off locked rears and the gauge flipping to earn-rate;
+all three remodeled levels start and read as real places (city night / mountain dusk /
+harbor); options shows 5 bindings; 5-key hint; desktop + mobile layouts. Two startup
+crashes caught and fixed during the session (window-material TDZ; none shipped).
+
+**Known issues:** instanced trees/containers ignore the shadow-quality toggle nuances
+(always castShadow; fine on current presets). Water is a flat reflective plane, no
+waves. FPS still unmeasurable headless (rAF suspends when the preview window is
+occluded); all additions are instanced or static with lights tagged optional.
+
+**Next steps:** touch steering, engine audio pass, animated water normal map, third
+car, main.js modularization.
