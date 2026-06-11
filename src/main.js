@@ -2280,16 +2280,35 @@ function createCar(config = carConfigs[0]) {
 
   addMesh(sprung, makeCarHullGeometry(visual.body), paint);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 2.62 : 2.76, 0.18, isE30 ? 4.2 : 4.44, 5, isE30 ? 0.035 : 0.08), carbon, [0, 0.43, 0.08]);
-  addMesh(sprung, new RoundedBoxGeometry(isE30 ? 2.04 : 2.42, 0.06, isE30 ? 1.02 : 1.18, 4, 0.035), darkPaint, [0, isE30 ? 1.02 : 0.92, -1.13], [-0.08, 0, 0]);
-  addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.92 : 2.22, 0.05, isE30 ? 0.78 : 0.82, 4, 0.03), darkPaint, [0, isE30 ? 0.96 : 0.91, 1.48], [0.05, 0, 0]);
   addMesh(sprung, new RoundedBoxGeometry(0.07, 0.08, 4.08, 3, 0.025), carbon, [-1.42, 0.5, 0.05]);
   addMesh(sprung, new RoundedBoxGeometry(0.07, 0.08, 4.08, 3, 0.025), carbon, [1.42, 0.5, 0.05]);
 
+  // Greenhouse: inset glass volume, a body-color roof panel sitting flush on
+  // top of it, and painted A-pillars (plus C-pillars on the three-box E3).
   const cabin = addMesh(sprung, new RoundedBoxGeometry(...visual.cabin, 7, isE30 ? 0.04 : 0.16), glass, visual.cabinPosition);
-  cabin.scale.set(1, 1, isE30 ? 0.96 : 0.95);
-  addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.44 : 1.26, 0.08, isE30 ? 0.78 : 0.84, 5, 0.045), darkPaint, [0, isE30 ? 1.55 : 1.51, 0.32]);
+  cabin.scale.set(0.97, 1, isE30 ? 0.96 : 0.95);
+  const cabinTop = visual.cabinPosition[1] + visual.cabin[1] / 2;
+  addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.46 : 1.3, 0.07, isE30 ? 0.86 : 0.9, 5, 0.03), paint, [0, cabinTop + 0.02, 0.32]);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.34 : 1.26, 0.035, isE30 ? 0.6 : 0.68, 5, 0.025), glass, [0, 1.12, -0.56], [-0.38, 0, 0]);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.22 : 1.18, 0.035, 0.54, 5, 0.025), glass, [0, 1.08, 0.95], [0.32, 0, 0]);
+  for (const side of [-1, 1]) {
+    addMesh(
+      sprung,
+      new RoundedBoxGeometry(0.07, isE30 ? 0.58 : 0.52, 0.1, 3, 0.03),
+      paint,
+      [side * (visual.cabin[0] / 2 - 0.07), cabinTop - 0.22, visual.cabinPosition[2] - visual.cabin[2] * 0.46],
+      [isE30 ? -0.5 : -0.62, 0, side * 0.06],
+    );
+    if (isE30) {
+      addMesh(
+        sprung,
+        new RoundedBoxGeometry(0.09, 0.56, 0.12, 3, 0.03),
+        paint,
+        [side * (visual.cabin[0] / 2 - 0.08), cabinTop - 0.22, visual.cabinPosition[2] + visual.cabin[2] * 0.44],
+        [0.34, 0, side * -0.05],
+      );
+    }
+  }
 
   for (const side of [-1, 1]) {
     addMesh(sprung, new RoundedBoxGeometry(0.035, 0.34, 0.76, 5, 0.025), glass, [side * 0.78, 1.2, 0.18], [0, 0, side * 0.12]);
@@ -2308,6 +2327,15 @@ function createCar(config = carConfigs[0]) {
 
   addMesh(sprung, new RoundedBoxGeometry(visual.frontSplitter, 0.1, 0.26, 4, 0.045), carbon, [0, 0.48, -2.34], [-0.05, 0, 0]);
   addMesh(sprung, new RoundedBoxGeometry(2.16, 0.14, 0.24, 4, 0.04), carbon, [0, 0.56, isE30 ? 2.42 : 2.25], [0.08, 0, 0]);
+
+  // Integrated bumpers: chrome blades on the E3, body-color wraps on the RS.
+  if (isE30) {
+    addMesh(sprung, new RoundedBoxGeometry(2.42, 0.13, 0.2, 3, 0.05), brakeDisc, [0, 0.6, -2.42], [-0.05, 0, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(2.38, 0.13, 0.2, 3, 0.05), brakeDisc, [0, 0.6, 2.46], [0.05, 0, 0]);
+  } else {
+    addMesh(sprung, new RoundedBoxGeometry(2.46, 0.2, 0.3, 4, 0.09), paint, [0, 0.58, -2.32], [-0.08, 0, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(2.3, 0.18, 0.28, 4, 0.08), paint, [0, 0.66, 2.3], [0.08, 0, 0]);
+  }
 
   if (isE30) {
     // High strut-mounted box wing over the trunk step
@@ -2518,22 +2546,29 @@ function makeCarHullGeometry(style = 'porsche') {
       { z: 1.95, bottom: 0.38, mid: 0.68, top: 0.76, lower: 1.1, shoulder: 1.3, deck: 0.82 },
       { z: 2.42, bottom: 0.44, mid: 0.6, top: 0.64, lower: 0.86, shoulder: 1.1, deck: 0.62 },
     ];
+  const smooth = subdivideHullSections(sections, 3);
   const vertices = [];
   const indices = [];
 
-  for (const section of sections) {
+  // Eight-point ring: floor pair, wheel-arch flanks, tumblehome belt, roof
+  // edge pair. The belt point rounds the doors instead of a flat slab side.
+  for (const section of smooth) {
+    const belt = THREE.MathUtils.lerp(section.shoulder, section.deck, 0.42);
+    const beltY = THREE.MathUtils.lerp(section.mid, section.top, 0.62);
     vertices.push(
       -section.lower, section.bottom, section.z,
       section.lower, section.bottom, section.z,
       section.shoulder, section.mid, section.z,
+      belt, beltY, section.z,
       section.deck, section.top, section.z,
       -section.deck, section.top, section.z,
+      -belt, beltY, section.z,
       -section.shoulder, section.mid, section.z,
     );
   }
 
-  const ring = 6;
-  for (let i = 0; i < sections.length - 1; i += 1) {
+  const ring = 8;
+  for (let i = 0; i < smooth.length - 1; i += 1) {
     const current = i * ring;
     const next = (i + 1) * ring;
     for (let j = 0; j < ring; j += 1) {
@@ -2546,7 +2581,7 @@ function makeCarHullGeometry(style = 'porsche') {
   }
 
   for (let j = 1; j < ring - 1; j += 1) indices.push(0, j, j + 1);
-  const last = (sections.length - 1) * ring;
+  const last = (smooth.length - 1) * ring;
   for (let j = 1; j < ring - 1; j += 1) indices.push(last, last + j + 1, last + j);
 
   const geometry = new THREE.BufferGeometry();
@@ -2554,6 +2589,44 @@ function makeCarHullGeometry(style = 'porsche') {
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
+}
+
+// Catmull-Rom interpolation across the authored cross-sections so the
+// silhouette flows like pressed steel instead of stepping between rings.
+function subdivideHullSections(sections, stepsPerGap) {
+  const keys = ['z', 'bottom', 'mid', 'top', 'lower', 'shoulder', 'deck'];
+  const result = [];
+
+  const sampleAt = (index) => sections[THREE.MathUtils.clamp(index, 0, sections.length - 1)];
+  const catmull = (p0, p1, p2, p3, t) => {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return 0.5 * (
+      2 * p1
+      + (-p0 + p2) * t
+      + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
+      + (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+    );
+  };
+
+  for (let i = 0; i < sections.length - 1; i += 1) {
+    for (let step = 0; step < stepsPerGap; step += 1) {
+      const t = step / stepsPerGap;
+      const blended = {};
+      for (const key of keys) {
+        blended[key] = catmull(
+          sampleAt(i - 1)[key],
+          sampleAt(i)[key],
+          sampleAt(i + 1)[key],
+          sampleAt(i + 2)[key],
+          t,
+        );
+      }
+      result.push(blended);
+    }
+  }
+  result.push({ ...sections[sections.length - 1] });
+  return result;
 }
 
 function addWheelArch(parent, side, z, material) {
