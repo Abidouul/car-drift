@@ -428,8 +428,9 @@ const levelConfigs = [
         [-14, 16], [-28, 12], [-34, 2], [-30, -8],
       ],
       closed: true,
-      width: 7.5,
-      shoulderWidth: 0.75,
+      scale: 1.55,
+      width: 9.2,
+      shoulderWidth: 0.9,
       laneColor: 0x5ce8ff,
       edgeColor: 0xff4eb8,
       asphalt: 0x34383b,
@@ -465,10 +466,13 @@ const levelConfigs = [
     visual: {
       background: 0x06070c,
       fog: 0x070713,
-      fogDensity: 0.022,
+      fogDensity: 0.013,
       ground: 0x1b2223,
       gridMain: 0x2b555d,
       terrain: 0x182427,
+      skyTop: 0x04060d,
+      skyHorizon: 0x1c2b4a,
+      starOpacity: 0.35,
       guardrail: 0x8fa7ad,
       sceneryAccent: 0xff4eb8,
     },
@@ -487,8 +491,9 @@ const levelConfigs = [
         [30, 0], [18, -10], [6, -2], [-4, 10],
       ],
       closed: true,
-      width: 6.4,
-      shoulderWidth: 0.65,
+      scale: 1.55,
+      width: 7.8,
+      shoulderWidth: 0.8,
       laneColor: 0xf7f0d2,
       edgeColor: 0xffdd67,
       asphalt: 0x3a3d3a,
@@ -524,10 +529,13 @@ const levelConfigs = [
     visual: {
       background: 0x0b1012,
       fog: 0x0b1012,
-      fogDensity: 0.028,
+      fogDensity: 0.016,
       ground: 0x263525,
       gridMain: 0x466c52,
       terrain: 0x2f4a30,
+      skyTop: 0x030911,
+      skyHorizon: 0x14333c,
+      starOpacity: 0.9,
       guardrail: 0xb9c2ba,
       sceneryAccent: 0xd3b36b,
     },
@@ -546,8 +554,9 @@ const levelConfigs = [
         [-18, 22], [-34, 8], [-32, -18],
       ],
       closed: true,
-      width: 8,
-      shoulderWidth: 0.8,
+      scale: 1.55,
+      width: 9.6,
+      shoulderWidth: 0.95,
       laneColor: 0xffdd67,
       edgeColor: 0x5ce8ff,
       asphalt: 0x333635,
@@ -582,10 +591,13 @@ const levelConfigs = [
     visual: {
       background: 0x07090a,
       fog: 0x07090a,
-      fogDensity: 0.024,
+      fogDensity: 0.014,
       ground: 0x20251f,
       gridMain: 0x657166,
       terrain: 0x20261f,
+      skyTop: 0x05080e,
+      skyHorizon: 0x2c2a20,
+      starOpacity: 0.55,
       guardrail: 0xaeb7b4,
       sceneryAccent: 0xffc067,
     },
@@ -974,10 +986,11 @@ function createGround() {
   world.add(levelDecor);
 
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(164, 164),
+    new THREE.PlaneGeometry(300, 300),
     new THREE.MeshStandardMaterial({
       color: 0x20261f,
-      roughness: 0.9,
+      map: makeGroundNoiseTexture(),
+      roughness: 0.94,
       metalness: 0.01,
     }),
   );
@@ -985,11 +998,39 @@ function createGround() {
   ground.receiveShadow = true;
   world.add(ground);
 
-  const grid = new THREE.GridHelper(154, 154, 0x5d6c62, 0x323c35);
-  grid.position.y = 0.012;
-  grid.material.transparent = true;
-  grid.material.opacity = 0.2;
-  world.add(grid);
+  // Gradient sky dome plus a sparse star field. Both ignore fog so the
+  // horizon glow and stars read at any fog density.
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(235, 24, 12),
+    new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false }),
+  );
+  sky.renderOrder = -2;
+  world.add(sky);
+
+  const starPositions = [];
+  for (let i = 0; i < 700; i += 1) {
+    const azimuth = (i / 700) * Math.PI * 2 + seededWave(i, 2.3) * 1.7;
+    const elevation = 0.08 + Math.abs(seededWave(i, 1.4)) * 1.32;
+    const radius = 226;
+    starPositions.push(
+      Math.cos(azimuth) * Math.cos(elevation) * radius,
+      Math.sin(elevation) * radius,
+      Math.sin(azimuth) * Math.cos(elevation) * radius,
+    );
+  }
+  const starGeometry = new THREE.BufferGeometry();
+  starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+  const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
+    color: 0xd6e6f5,
+    size: 1.1,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.6,
+    fog: false,
+    depthWrite: false,
+  }));
+  stars.renderOrder = -1;
+  world.add(stars);
 
   return {
     setLevel(index) {
@@ -1000,7 +1041,10 @@ function createGround() {
       state.levelFogDensity = visual.fogDensity;
       scene.fog.density = getCurrentLevelFogDensity();
       ground.material.color.setHex(visual.ground);
-      grid.material.color?.setHex(visual.gridMain);
+      sky.material.map?.dispose();
+      sky.material.map = makeSkyGradientTexture(visual.skyTop ?? 0x04060c, visual.skyHorizon ?? visual.fog);
+      sky.material.needsUpdate = true;
+      stars.material.opacity = visual.starOpacity ?? 0.6;
 
       disposeObjectTree(levelDecor);
       levelDecor.clear();
@@ -1012,9 +1056,64 @@ function createGround() {
     setMenuPresentation(active) {
       levelDecor.visible = !active;
       ground.visible = !active;
-      grid.visible = !active;
+      sky.visible = !active;
+      stars.visible = !active;
     },
   };
+}
+
+function makeGroundNoiseTexture() {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#8d8d8d';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 380; i += 1) {
+    const shade = 96 + Math.floor(Math.random() * 84);
+    ctx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, ${0.14 + Math.random() * 0.26})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      Math.random() * size,
+      Math.random() * size,
+      2 + Math.random() * 16,
+      2 + Math.random() * 16,
+      Math.random() * Math.PI,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(15, 15);
+  return texture;
+}
+
+function makeSkyGradientTexture(topHex, horizonHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  const top = `#${topHex.toString(16).padStart(6, '0')}`;
+  const horizon = `#${horizonHex.toString(16).padStart(6, '0')}`;
+  // The sphere's equator (eye level) sits at v=0.5; keep the glow band
+  // straddling it so the horizon actually glows above the ground line.
+  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+  gradient.addColorStop(0, top);
+  gradient.addColorStop(0.38, top);
+  gradient.addColorStop(0.56, horizon);
+  gradient.addColorStop(1, horizon);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 2, 256);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 function createMenuPreviewSystem() {
@@ -1360,7 +1459,11 @@ function createRoadLayout(parent, level) {
 }
 
 function buildRoadData(config) {
-  const rawPoints = normalizeRoadPoints(config.points, config.closed);
+  // Optional uniform track scale: control points, pad radii, zone radii and
+  // spawn coordinates all stretch together so authored layouts stay valid.
+  const scale = config.scale ?? 1;
+  const rawPoints = normalizeRoadPoints(config.points, config.closed)
+    .map(([x, z]) => [x * scale, z * scale]);
   const curvePoints = rawPoints.map(([x, z]) => new THREE.Vector3(x, 0, z));
   const curve = new THREE.CatmullRomCurve3(curvePoints, config.closed, 'catmullrom', 0.42);
   const sampleCount = config.samples ?? Math.max(144, curvePoints.length * 16);
@@ -1380,6 +1483,7 @@ function buildRoadData(config) {
   const resetPoints = createResetPoints(config, curve, rawPoints);
   const scoringZones = (config.scoringZones ?? []).map((zone) => ({
     ...zone,
+    radius: zone.radius * scale,
     center: pointFromRoadIndex(rawPoints, zone.pointIndex),
   }));
   const spawn = getRoadSpawn(config, curve);
@@ -1407,12 +1511,14 @@ function normalizeRoadPoints(points, closed) {
 }
 
 function getRoadWidthAt(position, config, roadPoints) {
+  const scale = config.scale ?? 1;
   let width = config.width;
   for (const pad of config.extraWidths ?? []) {
     const center = pointFromRoadIndex(roadPoints, pad.pointIndex);
     const distance = Math.hypot(position.x - center.x, position.z - center.z);
-    if (distance >= pad.radius) continue;
-    const influence = 1 - THREE.MathUtils.smoothstep(distance / pad.radius, 0, 1);
+    const radius = pad.radius * scale;
+    if (distance >= radius) continue;
+    const influence = 1 - THREE.MathUtils.smoothstep(distance / radius, 0, 1);
     width = Math.max(width, THREE.MathUtils.lerp(config.width, pad.width, influence));
   }
   return width;
@@ -1440,8 +1546,9 @@ function getRoadSpawn(config, curve) {
     };
   }
 
-  const spawnPoint = new THREE.Vector3(config.spawn[0], 0, config.spawn[1]);
-  const lookAt = new THREE.Vector3(config.spawnLookAt[0], 0, config.spawnLookAt[1]);
+  const spawnScale = config.scale ?? 1;
+  const spawnPoint = new THREE.Vector3(config.spawn[0] * spawnScale, 0, config.spawn[1] * spawnScale);
+  const lookAt = new THREE.Vector3(config.spawnLookAt[0] * spawnScale, 0, config.spawnLookAt[1] * spawnScale);
   const tangent = lookAt.clone().sub(spawnPoint);
   if (tangent.lengthSq() < 0.001) tangent.copy(curve.getTangentAt(0));
   tangent.y = 0;
