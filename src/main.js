@@ -100,8 +100,8 @@ const carConfigs = [
       cabinPosition: [0, 1.12, 0.28],
       scale: [1.02, 0.92, 1.02],
       wheelOffset: 1.4,
-      rearWingHeight: 1.48,
-      rearWingWidth: 2.78,
+      rearWingHeight: 1.0,
+      rearWingWidth: 2.3,
       frontSplitter: 2.74,
     },
   },
@@ -129,7 +129,7 @@ const carConfigs = [
       decal: 'SIDEWAYS CO.',
       decalAlt: 'LOCK STOP',
       lightStyle: 'square',
-      cabin: [1.5, 0.62, 1.12],
+      cabin: [1.5, 0.66, 1.16],
       cabinPosition: [0, 1.18, 0.28],
       scale: [0.98, 1, 0.98],
       wheelOffset: 1.35,
@@ -2080,13 +2080,13 @@ function createCar(config = carConfigs[0]) {
 
   addMesh(sprung, makeCarHullGeometry(visual.body), paint);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 2.62 : 2.76, 0.18, isE30 ? 4.2 : 4.44, 5, isE30 ? 0.035 : 0.08), carbon, [0, 0.43, 0.08]);
-  addMesh(sprung, new RoundedBoxGeometry(isE30 ? 2.04 : 2.42, 0.06, isE30 ? 1.02 : 1.18, 4, 0.035), darkPaint, [0, isE30 ? 1.02 : 1.03, -1.13], [-0.08, 0, 0]);
+  addMesh(sprung, new RoundedBoxGeometry(isE30 ? 2.04 : 2.42, 0.06, isE30 ? 1.02 : 1.18, 4, 0.035), darkPaint, [0, isE30 ? 1.02 : 0.92, -1.13], [-0.08, 0, 0]);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.92 : 2.22, 0.05, isE30 ? 0.78 : 0.82, 4, 0.03), darkPaint, [0, isE30 ? 0.96 : 0.91, 1.48], [0.05, 0, 0]);
   addMesh(sprung, new RoundedBoxGeometry(0.07, 0.08, 4.08, 3, 0.025), carbon, [-1.42, 0.5, 0.05]);
   addMesh(sprung, new RoundedBoxGeometry(0.07, 0.08, 4.08, 3, 0.025), carbon, [1.42, 0.5, 0.05]);
 
-  const cabin = addMesh(sprung, new RoundedBoxGeometry(...visual.cabin, 7, isE30 ? 0.055 : 0.16), glass, visual.cabinPosition);
-  cabin.scale.set(1, 1, isE30 ? 0.9 : 0.95);
+  const cabin = addMesh(sprung, new RoundedBoxGeometry(...visual.cabin, 7, isE30 ? 0.04 : 0.16), glass, visual.cabinPosition);
+  cabin.scale.set(1, 1, isE30 ? 0.96 : 0.95);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.44 : 1.26, 0.08, isE30 ? 0.78 : 0.84, 5, 0.045), darkPaint, [0, isE30 ? 1.55 : 1.51, 0.32]);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.34 : 1.26, 0.035, isE30 ? 0.6 : 0.68, 5, 0.025), glass, [0, 1.12, -0.56], [-0.38, 0, 0]);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 1.22 : 1.18, 0.035, 0.54, 5, 0.025), glass, [0, 1.08, 0.95], [0.32, 0, 0]);
@@ -2107,20 +2107,34 @@ function createCar(config = carConfigs[0]) {
   }
 
   addMesh(sprung, new RoundedBoxGeometry(visual.frontSplitter, 0.1, 0.26, 4, 0.045), carbon, [0, 0.48, -2.34], [-0.05, 0, 0]);
-  addMesh(sprung, new RoundedBoxGeometry(2.16, 0.14, 0.24, 4, 0.04), carbon, [0, 0.56, 2.25], [0.08, 0, 0]);
-  addMesh(sprung, new RoundedBoxGeometry(2.38, 0.08, 0.12, 4, 0.035), carbon, [0, 1.27, 2.17], [0.08, 0, 0]);
-  addMesh(sprung, new RoundedBoxGeometry(0.12, 0.42, 0.08, 3, 0.025), carbon, [-0.98, 1.05, 2.08], [0.08, 0, 0]);
-  addMesh(sprung, new RoundedBoxGeometry(0.12, 0.42, 0.08, 3, 0.025), carbon, [0.98, 1.05, 2.08], [0.08, 0, 0]);
-  addMesh(sprung, new RoundedBoxGeometry(visual.rearWingWidth, isE30 ? 0.08 : 0.09, isE30 ? 0.28 : 0.38, 4, 0.04), carbon, [0, visual.rearWingHeight, 2.26], [0.03, 0, 0]);
+  addMesh(sprung, new RoundedBoxGeometry(2.16, 0.14, 0.24, 4, 0.04), carbon, [0, 0.56, isE30 ? 2.42 : 2.25], [0.08, 0, 0]);
+
+  if (isE30) {
+    // High strut-mounted box wing over the trunk step
+    addMesh(sprung, new RoundedBoxGeometry(2.38, 0.08, 0.12, 4, 0.035), carbon, [0, 1.27, 2.17], [0.08, 0, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(0.12, 0.42, 0.08, 3, 0.025), carbon, [-0.98, 1.05, 2.08], [0.08, 0, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(0.12, 0.42, 0.08, 3, 0.025), carbon, [0.98, 1.05, 2.08], [0.08, 0, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(visual.rearWingWidth, 0.08, 0.28, 4, 0.04), carbon, [0, visual.rearWingHeight, 2.26], [0.03, 0, 0]);
+  } else {
+    // Whale-tail: wide flat tray low on the fastback decklid with upturned end plates
+    addMesh(sprung, new RoundedBoxGeometry(visual.rearWingWidth, 0.05, 0.66, 4, 0.022), carbon, [0, visual.rearWingHeight, 2.02], [0.12, 0, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(visual.rearWingWidth - 0.3, 0.04, 0.22, 3, 0.016), darkPaint, [0, visual.rearWingHeight + 0.05, 2.24], [0.34, 0, 0]);
+    for (const x of [-1, 1]) {
+      addMesh(sprung, new RoundedBoxGeometry(0.14, 0.12, 0.5, 3, 0.02), carbon, [x * (visual.rearWingWidth / 2 - 0.1), visual.rearWingHeight + 0.05, 2.06], [0.12, 0, x * -0.18]);
+    }
+  }
 
   if (isE30) {
     addMesh(sprung, new RoundedBoxGeometry(2.32, 0.12, 0.1, 3, 0.02), carbon, [0, 0.7, -2.46]);
     addMesh(sprung, new RoundedBoxGeometry(0.12, 0.28, 0.08, 3, 0.02), carbon, [-1.05, 0.6, -2.43]);
     addMesh(sprung, new RoundedBoxGeometry(0.12, 0.28, 0.08, 3, 0.02), carbon, [1.05, 0.6, -2.43]);
     addMesh(sprung, new RoundedBoxGeometry(1.9, 0.03, 0.08, 2, 0.012), black, [0, 0.92, -2.17]);
+    // Kidney-grille hint between the quad lights
+    addMesh(sprung, new RoundedBoxGeometry(0.22, 0.14, 0.06, 3, 0.02), black, [-0.13, 0.78, -2.33], [-0.08, 0, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(0.22, 0.14, 0.06, 3, 0.02), black, [0.13, 0.78, -2.33], [-0.08, 0, 0]);
   } else {
     for (const x of [-0.42, 0.42]) {
-      addMesh(sprung, new RoundedBoxGeometry(0.16, 0.025, 0.78, 2, 0.012), black, [x, 1.08, -1.25], [-0.1, 0, 0]);
+      addMesh(sprung, new RoundedBoxGeometry(0.16, 0.025, 0.78, 2, 0.012), black, [x, 0.95, -1.25], [-0.1, 0, 0]);
     }
     addMesh(sprung, new RoundedBoxGeometry(2.24, 0.045, 0.08, 3, 0.02), carbon, [0, 0.58, -2.54], [-0.1, 0, 0]);
   }
@@ -2130,18 +2144,20 @@ function createCar(config = carConfigs[0]) {
       addMesh(sprung, new RoundedBoxGeometry(0.42, 0.12, 0.08, 3, 0.018), lightLens, [side * 0.46, 0.79, -2.29], [-0.08, side * 0.04, 0]);
       addMesh(sprung, new RoundedBoxGeometry(0.28, 0.12, 0.08, 3, 0.018), lightLens, [side * 0.84, 0.79, -2.24], [-0.08, side * 0.04, 0]);
     } else {
-      addMesh(sprung, new THREE.CylinderGeometry(0.13, 0.13, 0.07, 24), lightLens, [side * 0.46, 0.78, -2.31], [Math.PI / 2, 0, 0]);
-      addMesh(sprung, new THREE.CylinderGeometry(0.12, 0.12, 0.07, 24), lightLens, [side * 0.78, 0.78, -2.25], [Math.PI / 2, 0, 0]);
+      // Raised round fender headlights on a long fender hump
+      addMesh(sprung, new RoundedBoxGeometry(0.28, 0.13, 0.95, 4, 0.06), paint, [side * 1.07, 0.83, -1.62], [-0.07, 0, side * 0.05]);
+      addMesh(sprung, new THREE.CylinderGeometry(0.14, 0.16, 0.24, 24), paint, [side * 1.06, 0.84, -2.08], [-1.16, 0, 0]);
+      addMesh(sprung, new THREE.CylinderGeometry(0.12, 0.12, 0.06, 24), lightLens, [side * 1.06, 0.9, -2.17], [-1.16, 0, 0]);
     }
-    addMesh(sprung, new RoundedBoxGeometry(isE30 ? 0.42 : 0.34, 0.08, 0.07, 4, 0.025), tailLens, [side * 0.76, 0.78, 2.28], [0.04, side * -0.08, 0]);
+    addMesh(sprung, new RoundedBoxGeometry(isE30 ? 0.42 : 0.34, 0.08, 0.07, 4, 0.025), tailLens, [side * 0.76, 0.78, isE30 ? 2.4 : 2.28], [0.04, side * -0.08, 0]);
     addMesh(sprung, new RoundedBoxGeometry(0.36, 0.05, 0.07, 3, 0.02), lightLens, [side * 1.08, 0.7, -2.08], [0, side * -0.25, 0]);
     addMesh(sprung, new THREE.CylinderGeometry(0.075, 0.075, 0.34, 18), carbon, [side * 0.52, 0.48, 2.42], [Math.PI / 2, 0, 0]);
   }
 
   addMesh(sprung, new RoundedBoxGeometry(0.05, 0.035, 2.75, 2, 0.018), black, [-0.72, 1.01, 0.1]);
   addMesh(sprung, new RoundedBoxGeometry(0.05, 0.035, 2.75, 2, 0.018), black, [0.72, 1.01, 0.1]);
-  addMesh(sprung, new RoundedBoxGeometry(1.04, 0.03, 0.045, 2, 0.015), black, [0, 1.05, -1.54]);
-  addMesh(sprung, new RoundedBoxGeometry(1.02, 0.03, 0.045, 2, 0.015), black, [0, 0.94, 1.83]);
+  addMesh(sprung, new RoundedBoxGeometry(1.04, 0.03, 0.045, 2, 0.015), black, [0, isE30 ? 0.9 : 0.86, -1.54]);
+  addMesh(sprung, new RoundedBoxGeometry(1.02, 0.03, 0.045, 2, 0.015), black, [0, isE30 ? 0.93 : 0.82, 1.83]);
 
   const wheelPositions = [
     [-visual.wheelOffset, 0.39, sim.frontAxleZ, true],
@@ -2216,7 +2232,7 @@ function addCarDecals(parent, visual, isE30) {
   }
 
   const hoodDecal = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.2), secondaryDecal);
-  hoodDecal.position.set(0, 1.1, -1.34);
+  hoodDecal.position.set(0, isE30 ? 0.94 : 0.92, -1.34);
   hoodDecal.rotation.set(-Math.PI / 2 - 0.08, 0, 0);
   parent.add(hoodDecal);
 }
@@ -2277,22 +2293,30 @@ function addMesh(parent, geometry, material, position = [0, 0, 0], rotation = [0
 }
 
 function makeCarHullGeometry(style = 'porsche') {
+  // Three-box E30 silhouette: flat hood plateau, raised beltline through the
+  // cabin, a distinct trunk step, then a near-vertical Kamm tail (last two
+  // rings share heights). Porsche is a fastback: the top line falls
+  // continuously from the cabin to a rounded tail with no rear plateau.
   const sections = style === 'e30'
     ? [
-      { z: -2.28, bottom: 0.4, mid: 0.64, top: 0.72, lower: 0.88, shoulder: 1.08, deck: 0.82 },
-      { z: -1.72, bottom: 0.36, mid: 0.74, top: 0.86, lower: 1.18, shoulder: 1.32, deck: 1.12 },
-      { z: -0.62, bottom: 0.34, mid: 0.82, top: 0.98, lower: 1.25, shoulder: 1.34, deck: 1.18 },
-      { z: 0.66, bottom: 0.34, mid: 0.82, top: 0.98, lower: 1.25, shoulder: 1.34, deck: 1.18 },
-      { z: 1.62, bottom: 0.38, mid: 0.76, top: 0.86, lower: 1.2, shoulder: 1.32, deck: 1.04 },
-      { z: 2.28, bottom: 0.42, mid: 0.66, top: 0.74, lower: 0.92, shoulder: 1.08, deck: 0.84 },
+      { z: -2.3, bottom: 0.4, mid: 0.62, top: 0.7, lower: 0.86, shoulder: 1.1, deck: 0.84 },
+      { z: -1.96, bottom: 0.36, mid: 0.74, top: 0.86, lower: 1.18, shoulder: 1.34, deck: 1.14 },
+      { z: -0.92, bottom: 0.34, mid: 0.8, top: 0.88, lower: 1.24, shoulder: 1.36, deck: 1.16 },
+      { z: -0.58, bottom: 0.34, mid: 0.82, top: 0.98, lower: 1.25, shoulder: 1.36, deck: 1.18 },
+      { z: 0.7, bottom: 0.34, mid: 0.82, top: 0.98, lower: 1.25, shoulder: 1.36, deck: 1.18 },
+      { z: 1.3, bottom: 0.36, mid: 0.8, top: 0.9, lower: 1.22, shoulder: 1.36, deck: 1.12 },
+      { z: 2.2, bottom: 0.4, mid: 0.76, top: 0.9, lower: 1.16, shoulder: 1.34, deck: 1.06 },
+      { z: 2.34, bottom: 0.44, mid: 0.74, top: 0.88, lower: 1.1, shoulder: 1.3, deck: 1.02 },
     ]
     : [
-      { z: -2.42, bottom: 0.38, mid: 0.62, top: 0.68, lower: 0.72, shoulder: 1.04, deck: 0.72 },
-      { z: -1.88, bottom: 0.34, mid: 0.72, top: 0.9, lower: 1.18, shoulder: 1.34, deck: 1.02 },
-      { z: -0.72, bottom: 0.32, mid: 0.82, top: 1.0, lower: 1.28, shoulder: 1.42, deck: 1.14 },
-      { z: 0.72, bottom: 0.32, mid: 0.78, top: 0.96, lower: 1.28, shoulder: 1.4, deck: 1.08 },
-      { z: 1.72, bottom: 0.35, mid: 0.7, top: 0.82, lower: 1.18, shoulder: 1.32, deck: 0.96 },
-      { z: 2.42, bottom: 0.42, mid: 0.62, top: 0.68, lower: 0.86, shoulder: 1.06, deck: 0.66 },
+      { z: -2.42, bottom: 0.38, mid: 0.6, top: 0.64, lower: 0.72, shoulder: 1.06, deck: 0.7 },
+      { z: -1.95, bottom: 0.34, mid: 0.7, top: 0.78, lower: 1.16, shoulder: 1.38, deck: 0.92 },
+      { z: -1.25, bottom: 0.32, mid: 0.78, top: 0.88, lower: 1.24, shoulder: 1.42, deck: 1.04 },
+      { z: -0.65, bottom: 0.32, mid: 0.82, top: 1.0, lower: 1.28, shoulder: 1.44, deck: 1.1 },
+      { z: 0.45, bottom: 0.32, mid: 0.8, top: 1.0, lower: 1.28, shoulder: 1.44, deck: 1.08 },
+      { z: 1.3, bottom: 0.34, mid: 0.74, top: 0.88, lower: 1.22, shoulder: 1.4, deck: 0.96 },
+      { z: 1.95, bottom: 0.38, mid: 0.68, top: 0.76, lower: 1.1, shoulder: 1.3, deck: 0.82 },
+      { z: 2.42, bottom: 0.44, mid: 0.6, top: 0.64, lower: 0.86, shoulder: 1.1, deck: 0.62 },
     ];
   const vertices = [];
   const indices = [];
