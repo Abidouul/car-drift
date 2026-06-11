@@ -891,7 +891,35 @@ h2 {
 
 h1 {
   max-width: 8ch;
+  background: linear-gradient(120deg, #f4f6f0 30%, #ffdd67 62%, #ff8a3c 92%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   font-size: clamp(3.2rem, 10vw, 6.8rem);
+  font-style: italic;
+}
+
+.menu-tagline {
+  position: relative;
+  margin: 2px 0 0;
+  padding-left: 14px;
+  color: #aeb7b4;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.menu-tagline::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 8px;
+  height: 3px;
+  border-radius: 2px;
+  background: #ffdd67;
+  content: "";
+  transform: translateY(-50%) skewX(-18deg);
 }
 
 h2 {

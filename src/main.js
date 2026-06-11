@@ -1003,11 +1003,12 @@ function createMenuPreviewSystem() {
   root.visible = false;
 
   const floorMaterial = new THREE.MeshPhysicalMaterial({
-    color: 0x101416,
-    roughness: 0.28,
-    metalness: 0.2,
-    clearcoat: 0.8,
-    clearcoatRoughness: 0.2,
+    color: 0x2a3134,
+    map: makeGarageFloorTexture(),
+    roughness: 0.34,
+    metalness: 0.18,
+    clearcoat: 0.7,
+    clearcoatRoughness: 0.24,
   });
   const wallMaterial = new THREE.MeshStandardMaterial({
     color: 0x11171a,
@@ -1100,6 +1101,18 @@ function createMenuPreviewSystem() {
     glow.position.y = 0.08;
     group.add(glow);
 
+    // The platforms used to sit empty; park each car on its showcase spot.
+    const showcase = createCar(slot.config);
+    showcase.root.position.y = 0.07;
+    showcase.root.scale.multiplyScalar(0.78);
+    showcase.root.traverse((child) => {
+      if (child.isPointLight) {
+        child.userData.optionalLight = true;
+        child.intensity *= 0.5;
+      }
+    });
+    group.add(showcase.root);
+
     root.add(group);
     previewSlots.set(slot.config.id, { group, glow, platform });
   }
@@ -1110,6 +1123,25 @@ function createMenuPreviewSystem() {
   const warmLight = new THREE.PointLight(0xffdd67, 26, 11, 2.4);
   warmLight.position.set(4.2, 2.8, -2.2);
   root.add(warmLight);
+
+  const hazeSprites = [];
+  if (!smallMachine) {
+    const hazeMaterial = new THREE.SpriteMaterial({
+      map: makeSmokeTexture(96),
+      color: 0x8fb4c4,
+      transparent: true,
+      opacity: 0.05,
+      depthWrite: false,
+    });
+    for (let i = 0; i < 5; i += 1) {
+      const sprite = new THREE.Sprite(hazeMaterial.clone());
+      sprite.position.set(-5.5 + i * 2.6, 0.9 + (i % 2) * 0.8, -4.6 + (i % 3) * 1.2);
+      sprite.scale.setScalar(3.4 + (i % 3) * 1.3);
+      sprite.userData.basePhase = i * 1.7;
+      root.add(sprite);
+      hazeSprites.push(sprite);
+    }
+  }
 
   return {
     root,
@@ -1126,11 +1158,22 @@ function createMenuPreviewSystem() {
     update(delta) {
       if (!root.visible) return;
       root.userData.time = (root.userData.time ?? 0) + delta;
+      const time = root.userData.time;
       for (const [id, slot] of previewSlots) {
         const selected = id === state.selectedCar;
         const targetY = selected ? 0.07 : 0;
         slot.group.position.y = THREE.MathUtils.lerp(slot.group.position.y, targetY, 1 - Math.pow(0.03, delta));
-        slot.group.rotation.y += Math.sin(root.userData.time * 0.7 + (id === 'e30' ? 1.2 : 0)) * delta * 0.035;
+        slot.group.rotation.y += Math.sin(time * 0.7 + (id === 'e30' ? 1.2 : 0)) * delta * 0.035;
+      }
+
+      const hazeVisible = getGraphicsProfile().smoke;
+      for (const sprite of hazeSprites) {
+        sprite.visible = hazeVisible;
+        if (!hazeVisible) continue;
+        const phase = time * 0.16 + sprite.userData.basePhase;
+        sprite.position.x += Math.sin(phase) * delta * 0.12;
+        sprite.position.y += Math.cos(phase * 0.7) * delta * 0.05;
+        sprite.material.opacity = 0.035 + (Math.sin(phase * 0.9) + 1) * 0.02;
       }
     },
   };
@@ -1200,6 +1243,91 @@ function addGarageProps(parent, carbonMaterial, blueNeon, amberNeon) {
 
   addMesh(parent, new RoundedBoxGeometry(0.14, 2.6, 0.14, 3, 0.03), blueNeon, [-7.8, 1.35, -6.35]);
   addMesh(parent, new RoundedBoxGeometry(0.14, 2.6, 0.14, 3, 0.03), amberNeon, [7.8, 1.35, -6.35]);
+
+  // Tyre stacks in the back corners
+  const tyreGeometry = new THREE.TorusGeometry(0.36, 0.15, 12, 28);
+  for (const [x, z, lean] of [[-7.6, -5.6, 0.08], [-6.6, -5.9, -0.1], [7.5, -5.5, 0.12]]) {
+    for (let level = 0; level < 3; level += 1) {
+      const tyre = new THREE.Mesh(tyreGeometry, carbonMaterial);
+      tyre.position.set(x + level * 0.03, 0.16 + level * 0.3, z);
+      tyre.rotation.set(Math.PI / 2 + lean * level, level * 0.7, 0);
+      tyre.castShadow = true;
+      parent.add(tyre);
+    }
+  }
+
+  // Work cones and a floor cable near the bays
+  const coneGeometry = new THREE.ConeGeometry(0.16, 0.42, 12);
+  const coneMaterial = new THREE.MeshStandardMaterial({ color: 0xd96a1f, roughness: 0.6, metalness: 0.05 });
+  for (const [x, z] of [[-3.4, -1.2], [3.5, -1.4], [4.4, -2.6]]) {
+    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+    cone.position.set(x, 0.21, z);
+    cone.castShadow = true;
+    parent.add(cone);
+  }
+  addMesh(parent, new RoundedBoxGeometry(5.4, 0.025, 0.1, 2, 0.012), carbonMaterial, [-2.4, 0.012, -1.9], [0, 0.5, 0]);
+}
+
+function makeGarageFloorTexture() {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#565e62';
+  ctx.fillRect(0, 0, size, size);
+
+  // Concrete blotches
+  for (let i = 0; i < 130; i += 1) {
+    const shade = 70 + Math.floor(Math.random() * 40);
+    ctx.fillStyle = `rgba(${shade}, ${shade + 4}, ${shade + 6}, ${0.16 + Math.random() * 0.2})`;
+    ctx.beginPath();
+    ctx.ellipse(
+      Math.random() * size,
+      Math.random() * size,
+      3 + Math.random() * 22,
+      2 + Math.random() * 14,
+      Math.random() * Math.PI,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+
+  // Expansion joints
+  ctx.strokeStyle = 'rgba(28, 32, 34, 0.5)';
+  ctx.lineWidth = 2;
+  for (const offset of [size * 0.25, size * 0.5, size * 0.75]) {
+    ctx.beginPath();
+    ctx.moveTo(offset, 0);
+    ctx.lineTo(offset, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, offset);
+    ctx.lineTo(size, offset);
+    ctx.stroke();
+  }
+
+  // Old tyre arcs
+  ctx.strokeStyle = 'rgba(16, 18, 19, 0.4)';
+  ctx.lineWidth = 5;
+  for (let i = 0; i < 7; i += 1) {
+    ctx.beginPath();
+    const arcX = Math.random() * size;
+    const arcY = Math.random() * size;
+    const radius = 26 + Math.random() * 60;
+    const start = Math.random() * Math.PI * 2;
+    ctx.arc(arcX, arcY, radius, start, start + 0.6 + Math.random() * 1.1);
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 2);
+  return texture;
 }
 
 function createRoadLayout(parent, level) {
