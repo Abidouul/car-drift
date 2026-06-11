@@ -6,6 +6,7 @@ import { createCarPreviewSystem } from './carPreview.js';
 const canvas = document.querySelector('#scene');
 const hud = document.querySelector('.hud');
 const driftFeedbackEl = document.querySelector('.drift-feedback');
+const impactFlashEl = document.querySelector('.impact-flash');
 const scorePopupsEl = document.querySelector('.score-popups');
 const driftGaugeEl = document.querySelector('.drift-gauge');
 const driftGaugeNeedleEl = document.querySelector('.drift-gauge-needle');
@@ -350,6 +351,7 @@ const state = {
     driftIntensity: 0,
     shake: 0,
     impact: 0,
+    impactFlash: 0,
     popupBank: 0,
     popupCooldown: 0,
     comboPulse: 0,
@@ -2986,6 +2988,8 @@ function resolveVehicleCollisions(vehicle, delta) {
 
   let strongestImpact = 0;
   let solvedContacts = 0;
+  let strongestContact = null;
+  let strongestNormal = null;
 
   for (let pass = 0; pass < 2; pass += 1) {
     const basis = getVehicleBasis(vehicle.yaw);
@@ -3006,7 +3010,12 @@ function resolveVehicleCollisions(vehicle, delta) {
 
         const velocityIntoSurface = dotGround(vehicle.velocity, hit.normal);
         const impactSpeed = Math.max(0, -velocityIntoSurface);
-        strongestImpact = Math.max(strongestImpact, impactSpeed * (0.55 + hit.depth));
+        const impactStrength = impactSpeed * (0.55 + hit.depth);
+        if (impactStrength > strongestImpact) {
+          strongestImpact = impactStrength;
+          strongestContact = contact.clone();
+          strongestNormal = hit.normal.clone();
+        }
 
         if (velocityIntoSurface < 0) {
           vehicle.velocity.addScaledVector(hit.normal, -velocityIntoSurface * (1 + collider.bounce));
@@ -3027,6 +3036,18 @@ function resolveVehicleCollisions(vehicle, delta) {
     const impact = THREE.MathUtils.clamp(strongestImpact / 5.4 + solvedContacts * 0.03, 0, 1);
     state.feedback.impact = Math.max(state.feedback.impact, impact);
     state.feedback.shake = Math.max(state.feedback.shake, impact * 0.58);
+
+    if (impact > 0.18) {
+      state.feedback.impactFlash = Math.max(state.feedback.impactFlash, impact);
+      if (strongestContact && smokeSystem) {
+        // emit() drifts particles opposite this velocity, so point it into
+        // the wall to puff the smoke back out along the contact normal.
+        const puffVelocity = strongestNormal.clone().multiplyScalar(-1.6).addScaledVector(vehicle.velocity, -0.25);
+        for (let n = 0; n < 4; n += 1) {
+          smokeSystem.emit(strongestContact, puffVelocity, strongestNormal, 0.6 + impact * 0.4);
+        }
+      }
+    }
 
     if (state.manual && impact > 0.22) {
       state.run.invalidTime = Math.max(state.run.invalidTime, runConfig.breakGrace + impact * 0.18);
@@ -3142,7 +3163,7 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
   const basis = getVehicleBasis(vehicle.yaw);
   const zoom = state.cameraZoom;
   const speedFactor = THREE.MathUtils.clamp(speed / 12, 0, 1);
-  const targetFov = getResponsiveFov() + speedFactor * (narrowView ? 5 : 7);
+  const targetFov = getResponsiveFov() + speedFactor * (narrowView ? 5 : 7) + state.feedback.comboPulse * 3;
   camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.pow(0.02, delta));
   camera.updateProjectionMatrix();
 
@@ -3172,7 +3193,13 @@ function updateCarVisuals(delta, telemetry = getVehicleTelemetry(state.vehicle))
       .add(new THREE.Vector3(0, jitterB * amplitude * 0.55, 0));
     cameraTarget.add(shakeOffset);
   }
-  const cameraLookAt = lookAt.clone().addScaledVector(basis.forward, speedFactor * 0.9);
+  // Lead the camera gently into the drift so the player sees where the
+  // car is sliding toward rather than where its nose points.
+  const lateralLead = THREE.MathUtils.clamp(slipAngle * 0.6, -1, 1) * speedFactor;
+  const cameraLookAt = lookAt
+    .clone()
+    .addScaledVector(basis.forward, speedFactor * 0.9)
+    .addScaledVector(basis.right, lateralLead);
   camera.position.lerp(cameraTarget, 1 - Math.pow(0.001, delta));
   camera.lookAt(cameraLookAt.addScaledVector(shakeOffset, 0.3));
 
@@ -3719,9 +3746,17 @@ function updateFeedbackVisuals(delta) {
   hud.classList.toggle('is-drifting', state.run.driftValid);
   updateDriftGauge();
 
+  state.feedback.impactFlash = Math.max(0, state.feedback.impactFlash - delta * 2.2);
+  impactFlashEl.style.setProperty('--impact-flash', state.feedback.impactFlash.toFixed(3));
+
   state.feedback.popupCooldown = Math.max(0, state.feedback.popupCooldown - delta);
   state.feedback.comboPulse = Math.max(0, state.feedback.comboPulse - delta);
   comboEl.classList.toggle('is-pulsing', state.feedback.comboPulse > 0);
+
+  const run = state.run;
+  const playing = state.screen === 'playing' && !state.paused;
+  comboEl.style.setProperty('--combo-progress', (run.combo % 1).toFixed(3));
+  comboEl.classList.toggle('is-decaying', playing && !run.driftValid && run.combo > 1.02);
 }
 
 const driftBlockLabels = {
@@ -4266,7 +4301,7 @@ function updateEffects(delta) {
   const contacts = vehicle.contacts;
   if (!contacts) return;
 
-  state.smokeAccumulator += delta * (14 + vehicle.rearSlip * 46);
+  state.smokeAccumulator += delta * (14 + vehicle.rearSlip * 46) * (0.8 + state.feedback.driftIntensity * 0.6);
   const emissions = Math.floor(state.smokeAccumulator);
   state.smokeAccumulator -= emissions;
 

@@ -71,6 +71,27 @@ body {
   box-shadow: 0 0 30px rgb(255 99 44 / 58%);
 }
 
+/* Speed streaks hugging the screen edges, driven by --speed-intensity */
+.drift-feedback::before {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(176deg, transparent 0 54px, rgb(244 246 240 / 5%) 54px 56px, transparent 56px 130px),
+    repeating-linear-gradient(184deg, transparent 0 72px, rgb(244 246 240 / 4%) 72px 74px, transparent 74px 150px);
+  content: "";
+  mask-image: linear-gradient(90deg, black 0 16%, transparent 30% 70%, black 84% 100%);
+  opacity: calc(var(--speed-intensity) * var(--speed-intensity) * 0.9);
+}
+
+.impact-flash {
+  --impact-flash: 0;
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 52%, rgb(255 64 48 / 34%) 88%, rgb(255 42 32 / 46%));
+  opacity: var(--impact-flash);
+}
+
 .score-popups {
   position: fixed;
   top: clamp(94px, 16vw, 164px);
@@ -176,11 +197,42 @@ dd {
   line-height: 1.1;
 }
 
+#combo {
+  --combo-progress: 0;
+  position: relative;
+  width: fit-content;
+}
+
+/* Progress toward the next combo step */
+#combo::after {
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, #5ce8ff calc(var(--combo-progress) * 100%), rgb(255 255 255 / 12%) calc(var(--combo-progress) * 100%));
+  content: "";
+  transition: opacity 160ms ease;
+}
+
 #combo.is-pulsing {
   color: #5ce8ff;
   transform: scale(1.08);
   transform-origin: left center;
   transition: color 80ms ease, transform 80ms ease;
+}
+
+#combo.is-decaying {
+  color: #ffb38a;
+  animation: combo-decay 640ms ease-in-out infinite;
+}
+
+@keyframes combo-decay {
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .controls {
