@@ -1841,10 +1841,11 @@ function placePropsAroundRoad(road, placements, clearance, callback) {
 }
 
 function createUrbanNightProps(parent, road) {
+  const [warmWindows, coolWindows] = getWindowMaterials();
   const buildingMaterials = [
-    new THREE.MeshStandardMaterial({ color: 0x202832, roughness: 0.68, metalness: 0.04 }),
+    warmWindows,
     new THREE.MeshStandardMaterial({ color: 0x18232a, roughness: 0.72, metalness: 0.04 }),
-    new THREE.MeshStandardMaterial({ color: 0x2a2230, roughness: 0.66, metalness: 0.04 }),
+    coolWindows,
   ];
   const concrete = new THREE.MeshStandardMaterial({ color: 0x31383c, roughness: 0.72, metalness: 0.08 });
   const neonBlue = new THREE.MeshStandardMaterial({
@@ -1913,8 +1914,8 @@ function createUrbanNightProps(parent, road) {
     parent.add(deck);
   }
 
-  for (let i = 0; i < 10; i += 1) {
-    const sample = road.samples[(i * 17) % (road.samples.length - 1)];
+  for (let i = 0; i < 14; i += 1) {
+    const sample = road.samples[(i * 12) % (road.samples.length - 1)];
     const side = i % 2 === 0 ? 1 : -1;
     const position = sample.position.clone().addScaledVector(sample.normal, side * (sample.width / 2 + 2.2));
     addLevelLamp(parent, position.x, position.z, 0, i % 2 === 0 ? 0x5ce8ff : 0xff4eb8, 20, 13, 4.2, concrete);
@@ -1924,6 +1925,44 @@ function createUrbanNightProps(parent, road) {
     const frame = getRoadFrame(pointFromRoadIndex(road.points, pointIndex), road);
     const position = frame.nearest.clone().addScaledVector(frame.normal, side * (frame.width / 2 + 1.1));
     addFlatRoadBox(parent, position, frame.tangent, 3.4, 0.16, 0.12, material);
+  }
+
+  // Mid-rise blocks past the guardrails and a distant lit skyline ring.
+  for (const spot of scatterAroundRoad(road, { count: 12, minClear: 18, maxDistance: 32, salt: 31 })) {
+    const width = 6 + seededWave(spot.seed, 1) * 6;
+    const depth = 5 + seededWave(spot.seed, 2) * 5;
+    const height = 7 + seededWave(spot.seed, 3) * 11;
+    const rotation = seededWave(spot.seed, 4) * Math.PI;
+    addCityTower(parent, spot.x, spot.z, rotation, width, height, depth, buildingMaterials[spot.seed % buildingMaterials.length]);
+    registerBoxCollider(spot.x, spot.z, width + 0.6, depth + 0.6, rotation, {
+      bounce: 0.12,
+      friction: 0.78,
+      kind: 'building',
+    });
+  }
+  for (const spot of scatterAroundRoad(road, { count: 16, minClear: 42, maxDistance: 95, salt: 77 })) {
+    const width = 9 + seededWave(spot.seed, 1) * 8;
+    const height = 18 + seededWave(spot.seed, 3) * 22;
+    addCityTower(
+      parent,
+      spot.x,
+      spot.z,
+      seededWave(spot.seed, 4) * Math.PI,
+      width,
+      height,
+      width * (0.7 + seededWave(spot.seed, 2) * 0.5),
+      spot.seed % 2 === 0 ? warmWindows : coolWindows,
+    );
+  }
+
+  for (const [pointIndex, side, text, color] of [
+    [3, 1, 'APEX LABS', 0xff4eb8],
+    [7, -1, 'NIGHT RUN', 0x5ce8ff],
+    [10, 1, 'SIDEWAYS CO.', 0xffdd67],
+  ]) {
+    const frame = getRoadFrame(pointFromRoadIndex(road.points, pointIndex), road);
+    const position = frame.nearest.clone().addScaledVector(frame.normal, side * (frame.width / 2 + 6.5));
+    addBillboard(parent, position.x, position.z, -Math.atan2(frame.tangent.z, frame.tangent.x) + (side > 0 ? Math.PI : 0), text, color);
   }
 }
 
@@ -1987,6 +2026,33 @@ function createMountainTougeProps(parent, road) {
   deck.castShadow = true;
   deck.receiveShadow = true;
   parent.add(deck);
+
+  // Dense instanced forest beyond the close hand-placed trees, dark ridge
+  // line in the distance, and a low moon over the valley.
+  addInstancedPines(parent, scatterAroundRoad(road, { count: 150, minClear: 8, maxDistance: 72, salt: 13 }));
+
+  const ridgeMaterial = new THREE.MeshStandardMaterial({ color: 0x131c16, roughness: 0.98, metalness: 0 });
+  for (const spot of scatterAroundRoad(road, { count: 7, minClear: 64, maxDistance: 112, salt: 51 })) {
+    const radius = 20 + seededWave(spot.seed, 1) * 18;
+    const height = 16 + seededWave(spot.seed, 2) * 16;
+    const ridge = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 7), ridgeMaterial);
+    ridge.position.set(spot.x, height / 2 - 0.4, spot.z);
+    ridge.rotation.y = seededWave(spot.seed, 3) * Math.PI;
+    parent.add(ridge);
+  }
+
+  const moon = new THREE.Mesh(
+    new THREE.SphereGeometry(6.5, 18, 18),
+    new THREE.MeshBasicMaterial({ color: 0xe9f2dc, fog: false }),
+  );
+  moon.position.set(-120, 78, -150);
+  parent.add(moon);
+  const moonGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(9.5, 18, 18),
+    new THREE.MeshBasicMaterial({ color: 0xc9dfb6, transparent: true, opacity: 0.16, fog: false }),
+  );
+  moonGlow.position.copy(moon.position);
+  parent.add(moonGlow);
 }
 
 function createIndustrialDockProps(parent, road) {
@@ -2064,12 +2130,211 @@ function createIndustrialDockProps(parent, road) {
     registerCircleCollider(position.x, position.z, 0.58, { bounce: 0.35, friction: 0.48, kind: 'drum' });
   }
 
-  for (let i = 0; i < 8; i += 1) {
-    const sample = road.samples[(i * 21) % (road.samples.length - 1)];
+  for (let i = 0; i < 10; i += 1) {
+    const sample = road.samples[(i * 17) % (road.samples.length - 1)];
     const side = i % 2 === 0 ? 1 : -1;
     const position = sample.position.clone().addScaledVector(sample.normal, side * (sample.width / 2 + 2.4));
     addLevelLamp(parent, position.x, position.z, 0, 0xffc067, 24, 15, 4.6, steel);
   }
+
+  // Harbor: a reflective water sheet past the quay on the track's +x side,
+  // concrete quay edge with bollards, and an instanced container yard.
+  let quayX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const sample of road.samples) {
+    quayX = Math.max(quayX, sample.position.x);
+    minZ = Math.min(minZ, sample.position.z);
+    maxZ = Math.max(maxZ, sample.position.z);
+  }
+  quayX += 16;
+
+  const water = new THREE.Mesh(
+    new THREE.PlaneGeometry(150, (maxZ - minZ) + 220),
+    new THREE.MeshStandardMaterial({ color: 0x0c1d28, roughness: 0.16, metalness: 0.72 }),
+  );
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(quayX + 75, -0.06, (minZ + maxZ) / 2);
+  parent.add(water);
+
+  const quay = new THREE.Mesh(
+    new THREE.BoxGeometry(2.4, 0.5, (maxZ - minZ) + 60),
+    new THREE.MeshStandardMaterial({ color: 0x3a4248, roughness: 0.8, metalness: 0.06 }),
+  );
+  quay.position.set(quayX + 1.2, 0.18, (minZ + maxZ) / 2);
+  quay.receiveShadow = true;
+  parent.add(quay);
+  const bollardMaterial = new THREE.MeshStandardMaterial({ color: 0x16191c, roughness: 0.5, metalness: 0.45 });
+  for (let i = 0; i < 12; i += 1) {
+    const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.62, 10), bollardMaterial);
+    bollard.position.set(quayX + 1.2, 0.66, minZ - 20 + i * ((maxZ - minZ + 40) / 11));
+    bollard.castShadow = true;
+    parent.add(bollard);
+  }
+
+  const yardSpots = scatterAroundRoad(road, { count: 9, minClear: 12, maxDistance: 42, salt: 23 });
+  const containerColors = [0xb3502e, 0x2e6f8e, 0x747d23, 0x5e3577];
+  const yardGeometry = new THREE.BoxGeometry(4.4, 1.25, 1.35);
+  const yardMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.72, metalness: 0.2 });
+  const totalBoxes = yardSpots.length * 4;
+  const yard = new THREE.InstancedMesh(yardGeometry, yardMaterial, totalBoxes);
+  const yardMatrix = new THREE.Matrix4();
+  const yardQuaternion = new THREE.Quaternion();
+  const yardColor = new THREE.Color();
+  let yardIndex = 0;
+  yardSpots.forEach((spot) => {
+    const rotation = seededWave(spot.seed, 4) * Math.PI;
+    yardQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotation);
+    for (let i = 0; i < 4; i += 1) {
+      const row = i % 2;
+      const tier = Math.floor(i / 2);
+      const offsetX = Math.cos(rotation) * (row * 1.55) + Math.sin(rotation) * 0.1;
+      const offsetZ = -Math.sin(rotation) * (row * 1.55) + Math.cos(rotation) * 0.1;
+      yardMatrix.compose(
+        new THREE.Vector3(spot.x + offsetX, 0.62 + tier * 1.27, spot.z + offsetZ),
+        yardQuaternion,
+        new THREE.Vector3(1, 1, 1),
+      );
+      yard.setMatrixAt(yardIndex, yardMatrix);
+      yardColor.setHex(containerColors[(spot.seed + i) % containerColors.length]);
+      yard.setColorAt(yardIndex, yardColor);
+      yardIndex += 1;
+    }
+  });
+  yard.castShadow = true;
+  yard.receiveShadow = true;
+  parent.add(yard);
+}
+
+function distanceToRoad(road, x, z) {
+  let best = Infinity;
+  for (let i = 0; i < road.samples.length; i += 2) {
+    const sample = road.samples[i];
+    const dx = x - sample.position.x;
+    const dz = z - sample.position.z;
+    const distance = dx * dx + dz * dz;
+    if (distance < best) best = distance;
+  }
+  return Math.sqrt(best);
+}
+
+// Deterministic scatter ring around the track: candidates come from seeded
+// waves (stable between runs), kept when they fall between the clearance
+// and the outer bound measured from the road centerline.
+function scatterAroundRoad(road, { count, minClear, maxDistance, salt = 0 }) {
+  const positions = [];
+  let attempt = 0;
+  while (positions.length < count && attempt < count * 14) {
+    attempt += 1;
+    const sample = road.samples[Math.floor(seededWave(attempt, salt) * (road.samples.length - 1))];
+    const side = seededWave(attempt, salt + 1) > 0.5 ? 1 : -1;
+    const reach = minClear + seededWave(attempt, salt + 2) * (maxDistance - minClear);
+    const along = (seededWave(attempt, salt + 3) - 0.5) * 26;
+    const x = sample.position.x + sample.normal.x * side * reach + sample.tangent.x * along;
+    const z = sample.position.z + sample.normal.z * side * reach + sample.tangent.z * along;
+    const clearance = distanceToRoad(road, x, z);
+    if (clearance < minClear || clearance > maxDistance) continue;
+    positions.push({ x, z, seed: attempt });
+  }
+  return positions;
+}
+
+function addInstancedPines(parent, positions) {
+  if (!positions.length) return;
+  const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4b3224, roughness: 0.88 });
+  const leafMaterial = new THREE.MeshStandardMaterial({ color: 0x16321d, roughness: 0.85 });
+  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.14, 0.2, 1.4, 6), trunkMaterial, positions.length);
+  const canopies = new THREE.InstancedMesh(new THREE.ConeGeometry(1.05, 3, 7), leafMaterial, positions.length);
+  const matrix = new THREE.Matrix4();
+  const quaternion = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+
+  positions.forEach((position, index) => {
+    const scale = 0.8 + seededWave(position.seed, 5) * 0.9;
+    quaternion.setFromAxisAngle(up, seededWave(position.seed, 6) * Math.PI * 2);
+    matrix.compose(
+      new THREE.Vector3(position.x, 0.7 * scale, position.z),
+      quaternion,
+      new THREE.Vector3(scale, scale, scale),
+    );
+    trunks.setMatrixAt(index, matrix);
+    matrix.compose(
+      new THREE.Vector3(position.x, (1.4 + 1.5) * scale * 0.82, position.z),
+      quaternion,
+      new THREE.Vector3(scale, scale, scale),
+    );
+    canopies.setMatrixAt(index, matrix);
+  });
+  trunks.castShadow = true;
+  canopies.castShadow = true;
+  parent.add(trunks, canopies);
+}
+
+function makeWindowTexture(warm) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#07090c';
+  ctx.fillRect(0, 0, 64, 128);
+  for (let row = 0; row < 16; row += 1) {
+    for (let col = 0; col < 8; col += 1) {
+      const lit = seededWave(row * 8 + col, warm ? 4.2 : 9.7) > 0.62;
+      ctx.fillStyle = lit
+        ? (warm ? 'rgba(255, 214, 140, 0.92)' : 'rgba(150, 208, 255, 0.88)')
+        : 'rgba(28, 34, 40, 0.9)';
+      ctx.fillRect(col * 8 + 2, row * 8 + 2, 4, 4);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function getWindowMaterials() {
+  // Cached on the function itself: module-level `let` would sit in the
+  // temporal dead zone when initializeGame() runs above this definition.
+  if (getWindowMaterials.cache) return getWindowMaterials.cache;
+  getWindowMaterials.cache = [makeWindowTexture(true), makeWindowTexture(false)].map((texture) => (
+    new THREE.MeshStandardMaterial({
+      color: 0x141a20,
+      roughness: 0.72,
+      metalness: 0.08,
+      emissive: 0xffffff,
+      emissiveMap: texture,
+      emissiveIntensity: 0.5,
+    })
+  ));
+  return getWindowMaterials.cache;
+}
+
+function addCityTower(parent, x, z, rotation, width, height, depth, material) {
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+  tower.position.set(x, height / 2, z);
+  tower.rotation.y = rotation;
+  parent.add(tower);
+  return tower;
+}
+
+function addBillboard(parent, x, z, rotation, text, color) {
+  const group = new THREE.Group();
+  group.position.set(x, 0, z);
+  group.rotation.y = rotation;
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.18, 5.6, 8),
+    new THREE.MeshStandardMaterial({ color: 0x22282c, roughness: 0.55, metalness: 0.3 }),
+  );
+  pole.position.y = 2.8;
+  pole.castShadow = true;
+  group.add(pole);
+  const frame = new THREE.Mesh(new RoundedBoxGeometry(5.2, 1.9, 0.18, 3, 0.04), createNeonMaterial(color, 0.55));
+  frame.position.y = 6.1;
+  group.add(frame);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 1.55), makePosterMaterial(text));
+  face.position.set(0, 6.1, 0.11);
+  group.add(face);
+  parent.add(group);
+  registerCircleCollider(x, z, 0.4, { bounce: 0.28, friction: 0.4, kind: 'billboard' });
 }
 
 function addPineTree(parent, x, z, trunkMaterial, leafMaterial) {
