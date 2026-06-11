@@ -19,17 +19,21 @@
           <i class="drift-gauge-needle"></i>
         </div>
         <div class="drift-gauge-info">
-          <span class="drift-gauge-angle">0&deg;</span>
+          <span class="drift-gauge-angle" id="angle">0 deg</span>
           <span class="drift-gauge-chip">Drift to score</span>
+          <span class="drift-gauge-speed" id="speed">0 km/h</span>
         </div>
       </div>
-      <section class="hud" aria-label="Simulation status">
-        <div>
-          <span class="label">Drift Donut</span>
-          <strong id="status">Looping</strong>
+      <section class="hud" aria-label="Run status">
+        <div class="hud-headline">
+          <strong id="status">Manual</strong>
+          <div class="hud-quick">
+            <button id="pause-button" type="button" aria-label="Pause" title="Pause">&#10073;&#10073;</button>
+            <button id="restart-button" type="button" aria-label="Restart run" title="Restart run">&#8635;</button>
+          </div>
         </div>
-        <dl>
-          <div>
+        <dl class="hud-stats">
+          <div class="hud-score">
             <dt>Score</dt>
             <dd id="score">0</dd>
           </div>
@@ -38,36 +42,25 @@
             <dd id="combo">x1.0</dd>
           </div>
           <div>
-            <dt>Timer</dt>
+            <dt>Time</dt>
             <dd id="timer">90</dd>
           </div>
           <div>
             <dt>Best</dt>
             <dd id="best-score">0</dd>
           </div>
-          <div>
-            <dt>Speed</dt>
-            <dd id="speed">78 km/h</dd>
-          </div>
-          <div>
-            <dt>Angle</dt>
-            <dd id="angle">42 deg</dd>
-          </div>
         </dl>
-        <div class="controls">
-          <button id="pause-button" type="button">Pause</button>
-          <button id="restart-button" type="button">Restart run</button>
-          <button id="mode-toggle" type="button">Play manual</button>
-          <label for="camera-zoom">
-            <span>Camera zoom</span>
-            <input id="camera-zoom" type="range" min="0.65" max="1.65" step="0.01" value="1" />
-          </label>
-          <label for="camera-angle">
-            <span>Camera angle</span>
-            <input id="camera-angle" type="range" min="-180" max="180" step="1" value="0" />
-          </label>
-        </div>
       </section>
+      <div class="controls-hint" hidden>
+        <p class="controls-hint-title">Controls</p>
+        <div class="controls-hint-keys">
+          <div><kbd data-hint-key="up">Z</kbd><span>Throttle</span></div>
+          <div><kbd data-hint-key="left">Q</kbd><span>Steer left</span></div>
+          <div><kbd data-hint-key="right">D</kbd><span>Steer right</span></div>
+          <div><kbd data-hint-key="down">S</kbd><span>Brake / reverse</span></div>
+        </div>
+        <p class="controls-hint-tip">Build speed, flick into a corner, hold the slide to score.</p>
+      </div>
       <section class="menu-overlay" data-screen="menu" aria-label="Game menu">
         <div class="menu-panel menu-panel-main" data-panel="main">
           <p class="eyebrow">Rear-wheel drift</p>
@@ -144,6 +137,17 @@
             <button id="pause-restart" class="secondary-button" type="button">Restart</button>
             <button id="pause-level-select" class="secondary-button" type="button">Level select</button>
             <button id="pause-main-menu" class="secondary-button" type="button">Main menu</button>
+          </div>
+          <div class="pause-tools">
+            <button id="mode-toggle" class="secondary-button" type="button">Play auto</button>
+            <label for="camera-zoom">
+              <span>Camera zoom</span>
+              <input id="camera-zoom" type="range" min="0.65" max="1.65" step="0.01" value="1" />
+            </label>
+            <label for="camera-angle">
+              <span>Camera angle</span>
+              <input id="camera-angle" type="range" min="-180" max="180" step="1" value="0" />
+            </label>
           </div>
         </div>
 
@@ -227,6 +231,7 @@
         <div class="menu-panel result-panel" data-panel="result" hidden>
           <p class="eyebrow">Run complete</p>
           <h2>Results</h2>
+          <p class="result-badge" id="result-new-best" hidden>New best!</p>
           <div class="result-stats">
             <div>
               <span>Score</span>
@@ -235,6 +240,14 @@
             <div>
               <span>Best</span>
               <strong id="result-best-score">0</strong>
+            </div>
+            <div>
+              <span>Max combo</span>
+              <strong id="result-max-combo">x1.0</strong>
+            </div>
+            <div>
+              <span>Drift time</span>
+              <strong id="result-drift-time">0s</strong>
             </div>
           </div>
           <div class="menu-actions">

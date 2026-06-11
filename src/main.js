@@ -10,7 +10,6 @@ const impactFlashEl = document.querySelector('.impact-flash');
 const scorePopupsEl = document.querySelector('.score-popups');
 const driftGaugeEl = document.querySelector('.drift-gauge');
 const driftGaugeNeedleEl = document.querySelector('.drift-gauge-needle');
-const driftGaugeAngleEl = document.querySelector('.drift-gauge-angle');
 const driftGaugeChipEl = document.querySelector('.drift-gauge-chip');
 const scoreEl = document.querySelector('#score');
 const comboEl = document.querySelector('#combo');
@@ -34,6 +33,10 @@ const carCards = [...document.querySelectorAll('[data-car-card]')];
 const levelBackButton = document.querySelector('#level-back-button');
 const resultScoreEl = document.querySelector('#result-score');
 const resultBestScoreEl = document.querySelector('#result-best-score');
+const resultMaxComboEl = document.querySelector('#result-max-combo');
+const resultDriftTimeEl = document.querySelector('#result-drift-time');
+const resultNewBestEl = document.querySelector('#result-new-best');
+const controlsHintEl = document.querySelector('.controls-hint');
 const resultRestartButton = document.querySelector('#result-restart');
 const resultLevelSelectButton = document.querySelector('#result-level-select');
 const resultMainMenuButton = document.querySelector('#result-main-menu');
@@ -335,9 +338,12 @@ const state = {
     bestScore: loadBestScore(),
     combo: 1,
     driftDuration: 0,
+    driftTimeTotal: 0,
+    maxCombo: 1,
     invalidTime: 0,
     driftValid: false,
     driftBlockReason: null,
+    newBest: false,
     pointsPerSecond: 0,
     ended: false,
   },
@@ -3307,8 +3313,12 @@ function resetRun() {
   state.run.score = 0;
   state.run.combo = 1;
   state.run.driftDuration = 0;
+  state.run.driftTimeTotal = 0;
+  state.run.maxCombo = 1;
   state.run.invalidTime = runConfig.breakGrace;
   state.run.driftValid = false;
+  state.run.driftBlockReason = null;
+  state.run.newBest = false;
   state.run.pointsPerSecond = 0;
   state.run.ended = false;
   state.feedback.popupBank = 0;
@@ -3348,6 +3358,46 @@ function startLevel(levelIndex) {
   menuOverlay.hidden = true;
   updateScenePresentationVisibility();
   clearMovementInput();
+  maybeShowControlsHint();
+}
+
+const controlsHintStorageKey = 'driftDonut.controlsHint.v1';
+let controlsHintTimer = 0;
+
+function maybeShowControlsHint() {
+  if (!controlsHintEl) return;
+  try {
+    if (window.localStorage.getItem(controlsHintStorageKey)) return;
+  } catch {
+    return;
+  }
+
+  for (const kbd of controlsHintEl.querySelectorAll('[data-hint-key]')) {
+    const action = kbd.dataset.hintKey;
+    kbd.textContent = (state.keyBindings[action] ?? defaultKeyBindings[action]).label;
+  }
+  controlsHintEl.hidden = false;
+  controlsHintTimer = 7;
+}
+
+function dismissControlsHint() {
+  if (!controlsHintEl || controlsHintEl.hidden) return;
+  controlsHintEl.hidden = true;
+  try {
+    window.localStorage.setItem(controlsHintStorageKey, '1');
+  } catch {
+    // Private browsing: the hint will simply show again next session.
+  }
+}
+
+function updateControlsHint(delta) {
+  if (!controlsHintEl || controlsHintEl.hidden) return;
+  if (state.screen !== 'playing') {
+    controlsHintEl.hidden = true;
+    return;
+  }
+  controlsHintTimer -= delta;
+  if (controlsHintTimer <= 0) dismissControlsHint();
 }
 
 function restartCurrentRun() {
@@ -3616,6 +3666,7 @@ function updateScoring(delta, telemetry) {
 
   run.invalidTime = 0;
   run.driftDuration += delta;
+  run.driftTimeTotal += delta;
 
   const speedFactor = Math.max(
     0.35,
@@ -3637,6 +3688,7 @@ function updateScoring(delta, telemetry) {
     runConfig.maxCombo,
     run.combo + runConfig.comboGain * (0.75 + angleFactor + slipFactor) * delta,
   );
+  run.maxCombo = Math.max(run.maxCombo, run.combo);
   run.pointsPerSecond = runConfig.basePointsPerSecond
     * speedFactor
     * angleFactor
@@ -3688,7 +3740,8 @@ function finishRun() {
   clearMovementInput();
 
   const finalScore = Math.floor(run.score);
-  if (finalScore > run.bestScore) {
+  run.newBest = finalScore > run.bestScore && finalScore > 0;
+  if (run.newBest) {
     run.bestScore = finalScore;
     saveBestScore(finalScore);
   }
@@ -3711,6 +3764,9 @@ function updateHud() {
 function updateResultPanel() {
   resultScoreEl.textContent = String(Math.floor(state.run.score));
   resultBestScoreEl.textContent = String(state.run.bestScore);
+  resultMaxComboEl.textContent = `x${state.run.maxCombo.toFixed(1)}`;
+  resultDriftTimeEl.textContent = `${state.run.driftTimeTotal.toFixed(1)}s`;
+  resultNewBestEl.hidden = !state.run.newBest;
 }
 
 function updateFeedbackState(delta, telemetry) {
@@ -3745,6 +3801,7 @@ function updateFeedbackVisuals(delta) {
   driftFeedbackEl.classList.toggle('is-strong', intensity > 0.68);
   hud.classList.toggle('is-drifting', state.run.driftValid);
   updateDriftGauge();
+  updateControlsHint(delta);
 
   state.feedback.impactFlash = Math.max(0, state.feedback.impactFlash - delta * 2.2);
   impactFlashEl.style.setProperty('--impact-flash', state.feedback.impactFlash.toFixed(3));
@@ -3779,7 +3836,7 @@ function updateDriftGauge() {
   const angleDeg = Math.abs(telemetry.slipAngle) * THREE.MathUtils.RAD2DEG;
   const fraction = THREE.MathUtils.clamp(angleDeg / 90, 0, 1);
   driftGaugeNeedleEl.style.setProperty('--needle-position', fraction.toFixed(3));
-  driftGaugeAngleEl.textContent = `${Math.round(angleDeg)}°`;
+  // The angle readout itself (#angle) is written by updateCarVisuals.
 
   driftGaugeEl.classList.toggle('is-valid', run.driftValid);
   if (run.driftValid) {
@@ -4266,6 +4323,7 @@ function isMovementKey(event) {
 function setMovementInput(event, active) {
   const direction = getMovementDirection(event);
   if (!direction) return;
+  if (active) dismissControlsHint();
   state.input[direction] = active;
 }
 
