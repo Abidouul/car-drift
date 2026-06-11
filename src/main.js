@@ -1,6 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { createCarPreviewSystem } from './carPreview.js';
 
 const canvas = document.querySelector('#scene');
 const hud = document.querySelector('.hud');
@@ -275,6 +276,7 @@ let world;
 let levelSystem;
 let car;
 let menuPreviewSystem;
+let carPreviewSystem;
 let smokeSystem;
 let skidSystem;
 let audioEngine;
@@ -571,6 +573,7 @@ function initializeGame() {
   world.add(car.root);
   menuPreviewSystem = createMenuPreviewSystem();
   world.add(menuPreviewSystem.root);
+  carPreviewSystem = createCarPreviewSystem({ carConfigs, createCar, lowPower: smallMachine });
   smokeSystem = createSmokeSystem();
   skidSystem = createSkidSystem();
   state.vehicle.contacts = createWheelContactData();
@@ -2758,6 +2761,7 @@ function animate(now = 0) {
   }
 
   updateMenuPresentationScene(delta);
+  carPreviewSystem?.update(delta, isCarSelectVisible());
   updateFeedbackVisuals(delta);
   updateAudioFeedback(delta, telemetry);
   smokeSystem.update(delta);
@@ -3321,6 +3325,7 @@ function showCarSelect() {
   state.levelBackPanel = 'cars';
   renderCarSelection();
   showMenuPanel('cars');
+  requestAnimationFrame(() => carPreviewSystem?.syncSize());
   clearMovementInput();
 }
 
@@ -3397,6 +3402,7 @@ function renderCarSelection() {
   }
 
   menuPreviewSystem?.setSelected(state.selectedCar);
+  carPreviewSystem?.setSelected(state.selectedCar);
 }
 
 function rebuildGameplayCar() {
@@ -3417,8 +3423,8 @@ function getSelectedCarConfig() {
   return getCarConfig(state.selectedCar) ?? carConfigs[0];
 }
 
-function isMenuPresentationActive() {
-  return ['menu', 'result', 'quit'].includes(state.screen) && !panels.webgl.hidden;
+function isCarSelectVisible() {
+  return state.screen === 'menu' && !menuOverlay.hidden && !panels.cars.hidden;
 }
 
 function updateScenePresentationVisibility() {
