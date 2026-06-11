@@ -7,6 +7,10 @@ const canvas = document.querySelector('#scene');
 const hud = document.querySelector('.hud');
 const driftFeedbackEl = document.querySelector('.drift-feedback');
 const scorePopupsEl = document.querySelector('.score-popups');
+const driftGaugeEl = document.querySelector('.drift-gauge');
+const driftGaugeNeedleEl = document.querySelector('.drift-gauge-needle');
+const driftGaugeAngleEl = document.querySelector('.drift-gauge-angle');
+const driftGaugeChipEl = document.querySelector('.drift-gauge-chip');
 const scoreEl = document.querySelector('#score');
 const comboEl = document.querySelector('#combo');
 const timerEl = document.querySelector('#timer');
@@ -108,7 +112,7 @@ const carConfigs = [
       cabinPosition: [0, 1.12, 0.28],
       scale: [1.02, 0.92, 1.02],
       wheelOffset: 1.4,
-      rearWingHeight: 1.0,
+      rearWingHeight: 0.9,
       rearWingWidth: 2.3,
       frontSplitter: 2.74,
     },
@@ -332,6 +336,7 @@ const state = {
     driftDuration: 0,
     invalidTime: 0,
     driftValid: false,
+    driftBlockReason: null,
     pointsPerSecond: 0,
     ended: false,
   },
@@ -3551,6 +3556,24 @@ function updateScoring(delta, telemetry) {
 
   run.driftValid = validDrift;
 
+  // Surface the first failed predicate so the HUD can tell the player why
+  // the score is not counting right now.
+  if (validDrift) {
+    run.driftBlockReason = null;
+  } else if (!state.manual) {
+    run.driftBlockReason = 'auto';
+  } else if (!onRoad) {
+    run.driftBlockReason = 'offroad';
+  } else if (speed < runConfig.minSpeed) {
+    run.driftBlockReason = 'speed';
+  } else if (angle < runConfig.minAngle) {
+    run.driftBlockReason = 'angle-low';
+  } else if (angle > runConfig.maxAngle) {
+    run.driftBlockReason = 'angle-high';
+  } else {
+    run.driftBlockReason = 'grip';
+  }
+
   if (!validDrift) {
     run.invalidTime += delta;
     run.pointsPerSecond = 0;
@@ -3694,10 +3717,41 @@ function updateFeedbackVisuals(delta) {
   driftFeedbackEl.classList.toggle('is-active', intensity > 0.34);
   driftFeedbackEl.classList.toggle('is-strong', intensity > 0.68);
   hud.classList.toggle('is-drifting', state.run.driftValid);
+  updateDriftGauge();
 
   state.feedback.popupCooldown = Math.max(0, state.feedback.popupCooldown - delta);
   state.feedback.comboPulse = Math.max(0, state.feedback.comboPulse - delta);
   comboEl.classList.toggle('is-pulsing', state.feedback.comboPulse > 0);
+}
+
+const driftBlockLabels = {
+  auto: 'Auto pilot',
+  offroad: 'Off road!',
+  speed: 'Too slow',
+  'angle-low': 'More angle',
+  'angle-high': 'Too much angle',
+  grip: 'More throttle',
+};
+
+function updateDriftGauge() {
+  if (!driftGaugeEl) return;
+  const active = state.screen === 'playing' && state.manual && !state.paused;
+  driftGaugeEl.hidden = !active;
+  if (!active) return;
+
+  const run = state.run;
+  const telemetry = getVehicleTelemetry(state.vehicle);
+  const angleDeg = Math.abs(telemetry.slipAngle) * THREE.MathUtils.RAD2DEG;
+  const fraction = THREE.MathUtils.clamp(angleDeg / 90, 0, 1);
+  driftGaugeNeedleEl.style.setProperty('--needle-position', fraction.toFixed(3));
+  driftGaugeAngleEl.textContent = `${Math.round(angleDeg)}°`;
+
+  driftGaugeEl.classList.toggle('is-valid', run.driftValid);
+  if (run.driftValid) {
+    driftGaugeChipEl.textContent = `+${Math.max(1, Math.round(run.pointsPerSecond))}/s ×${run.combo.toFixed(1)}`;
+  } else {
+    driftGaugeChipEl.textContent = driftBlockLabels[run.driftBlockReason] ?? 'Drift to score';
+  }
 }
 
 function getDriftIntensity(telemetry) {
