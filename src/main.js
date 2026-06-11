@@ -1,6 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createCarPreviewSystem } from './carPreview.js';
 import { buildRouteSVG } from './routePreview.js';
 
@@ -617,6 +618,13 @@ function initializeGame() {
   clock = new THREE.Clock();
   world = new THREE.Group();
   scene.add(world);
+
+  // Image-based lighting: a prefiltered studio environment gives the car
+  // paint, glass, and rims real reflections. Generated once at startup.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.32;
+  pmrem.dispose();
 
   setupLights();
   levelSystem = createGround();
@@ -4239,7 +4247,7 @@ function applyShadowSetting() {
 }
 
 function loadGraphicsSettings() {
-  const defaultPreset = smallMachine ? 'lowest' : 'medium';
+  const defaultPreset = smallMachine ? 'low' : 'high';
   const fallback = graphicsPresets[defaultPreset];
 
   try {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // Live 3D previews for the car selection cards. One small shared WebGL
 // renderer draws each car's studio scene, then blits into that card's 2D
@@ -120,6 +121,15 @@ export function createCarPreviewSystem({ carConfigs, createCar, lowPower = false
       event.preventDefault();
       markFailed();
     });
+
+    // Studio reflections for the showcase paint and glass.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    for (const entry of entries) {
+      entry.scene.environment = environment;
+      entry.scene.environmentIntensity = 0.85;
+    }
+    pmrem.dispose();
     return renderer;
   }
 
