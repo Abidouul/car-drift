@@ -65,12 +65,13 @@ const panels = {
   webgl: document.querySelector('[data-panel="webgl"]'),
 };
 
-const movementActions = ['up', 'left', 'right', 'down'];
+const movementActions = ['up', 'left', 'right', 'down', 'handbrake'];
 const actionLabels = {
   up: 'Forward',
   left: 'Left',
   right: 'Right',
   down: 'Reverse',
+  handbrake: 'Handbrake',
 };
 const keyBindingStorageKey = 'driftDonut.keyBindings.v1';
 const bestScoreStorageKey = 'driftDonut.bestScore.v1';
@@ -80,6 +81,7 @@ const defaultKeyBindings = {
   left: { key: 'q', code: 'KeyA', label: 'Q' },
   right: { key: 'd', code: 'KeyD', label: 'D' },
   down: { key: 's', code: 'KeyS', label: 'S' },
+  handbrake: { key: ' ', code: 'Space', label: 'Space' },
 };
 const carConfigs = [
   {
@@ -369,6 +371,7 @@ const state = {
     down: false,
     left: false,
     right: false,
+    handbrake: false,
   },
   vehicle: {
     position: new THREE.Vector3(5.65, 0, 0),
@@ -379,6 +382,7 @@ const state = {
     throttle: 1,
     wheelSpinFront: 0,
     wheelSpinRear: 0,
+    handbrake: 0,
     rearSlip: 0,
     frontSlip: 0,
     lateralG: 0,
@@ -908,6 +912,9 @@ function setupEventListeners() {
     }
 
     if (!isMovementKey(event)) return;
+    // Only capture driving keys during play; in menus Space/letters must keep
+    // their normal behavior (e.g. activating the focused button).
+    if (state.screen !== 'playing') return;
     event.preventDefault();
     unlockAudio();
     setMovementInput(event, true);
@@ -915,6 +922,10 @@ function setupEventListeners() {
 
   window.addEventListener('keyup', (event) => {
     if (!isMovementKey(event)) return;
+    if (state.screen !== 'playing') {
+      clearMovementInput();
+      return;
+    }
     event.preventDefault();
     setMovementInput(event, false);
   });
@@ -2998,10 +3009,21 @@ function updateVehicle(delta) {
       .multiplyScalar((roadConfig.targetSpeed - tangentSpeed) * 1.75)
       .addScaledVector(roadFrame.normal, -centerError * 7.8 - lateralSpeed * 5.2);
 
+  // Handbrake: smooth engagement so locking the rears never snaps the car.
+  // While held it cuts rear lateral grip, kills drive, and drags the rear
+  // axle's longitudinal speed toward zero - the classic drift-initiation tool.
+  const handbrakeHeld = state.manual && state.input.handbrake;
+  vehicle.handbrake = THREE.MathUtils.lerp(
+    vehicle.handbrake,
+    handbrakeHeld ? 1 : 0,
+    1 - Math.pow(handbrakeHeld ? 0.0001 : 0.002, delta),
+  );
+  const handbrake = vehicle.handbrake;
+
   const frontCornering = sim.frontCornering * handling.frontCorneringScale;
-  const rearCornering = sim.rearCornering * handling.rearCorneringScale;
+  const rearCornering = sim.rearCornering * handling.rearCorneringScale * (1 - handbrake * 0.62);
   const frontGrip = sim.frontGrip * handling.frontGripScale;
-  const rearGrip = sim.rearGrip * handling.rearGripScale;
+  const rearGrip = sim.rearGrip * handling.rearGripScale * (1 - handbrake * 0.55);
   const frontLateralForce = THREE.MathUtils.clamp(-frontLat * frontCornering, -frontGrip, frontGrip);
   const frontForce = frontSide.clone().multiplyScalar(frontLateralForce).add(driverCorrection.clampLength(0, 8.4));
   force.add(frontForce);
@@ -3009,7 +3031,9 @@ function updateVehicle(delta) {
 
   const brakeForce = controls.brake * manualTuning.brakeForce;
   const driveForce = sim.driveForce * handling.driveForceScale;
-  const rearDriveForce = driveForce * vehicle.throttle - Math.sign(rearLong || 1) * brakeForce;
+  const rearDriveForce = driveForce * vehicle.throttle * (1 - handbrake * 0.85)
+    - Math.sign(rearLong || 1) * brakeForce
+    - rearLong * handbrake * 2.4;
   const rearSlipFromPower = THREE.MathUtils.clamp((Math.abs(rearDriveForce) - Math.abs(rearLong) * 0.65) / driveForce, 0, 1);
   const rearGripLimit = THREE.MathUtils.lerp(rearGrip, handling.rearPowerGrip, rearSlipFromPower);
   const rearLateralForce = THREE.MathUtils.clamp(-rearLat * rearCornering, -rearGripLimit, rearGripLimit);
@@ -3058,13 +3082,18 @@ function updateVehicle(delta) {
     1,
   );
   vehicle.rearSlip = THREE.MathUtils.clamp(
-    Math.abs(rearLat) / (2.5 * handling.rearGripScale) + rearSlipFromPower * 0.9 + impact * 0.16,
+    Math.abs(rearLat) / (2.5 * handling.rearGripScale)
+      + rearSlipFromPower * 0.9
+      + impact * 0.16
+      + handbrake * THREE.MathUtils.clamp(speed / 4.5, 0, 1) * 0.5,
     0,
     1,
   );
   vehicle.lateralG = THREE.MathUtils.clamp((frontLateralForce + rearLateralForce) / 18, -1.25, 1.25);
   vehicle.wheelSpinFront += Math.max(0.8, Math.abs(frontLong)) * delta * 2.8;
-  vehicle.wheelSpinRear += (Math.max(1, Math.abs(rearLong)) * 3.2 + Math.abs(rearDriveForce) * 1.1 * vehicle.rearSlip) * delta;
+  // Locked rears stop spinning while the handbrake is on.
+  vehicle.wheelSpinRear += (Math.max(1, Math.abs(rearLong)) * 3.2 + Math.abs(rearDriveForce) * 1.1 * vehicle.rearSlip)
+    * delta * (1 - handbrake * 0.92);
 
   updateWheelContactData(vehicle);
   vehicle.roadFrame = getRoadFrame(vehicle.position);
@@ -3438,6 +3467,7 @@ function resetVehicle(manual) {
   vehicle.throttle = manual ? 0 : 1;
   vehicle.wheelSpinFront = 0;
   vehicle.wheelSpinRear = 0;
+  vehicle.handbrake = 0;
   vehicle.rearSlip = 0;
   vehicle.frontSlip = 0;
   vehicle.lateralG = 0;
@@ -4530,6 +4560,7 @@ function clearMovementInput() {
   state.input.down = false;
   state.input.left = false;
   state.input.right = false;
+  state.input.handbrake = false;
 }
 
 function getMovementDirection(event) {
@@ -4624,7 +4655,14 @@ function updateWheelContactData(vehicle) {
     data.side.set(wheelSideX * wheel.side, 0, wheelSideZ * wheel.side);
     data.slip = wheel.front
       ? THREE.MathUtils.clamp(lateral / 4.5, 0, 1)
-      : THREE.MathUtils.clamp(lateral / 2.7 + vehicle.throttle * 0.58, 0, 1);
+      : THREE.MathUtils.clamp(
+        lateral / 2.7
+          + vehicle.throttle * 0.58
+          // Locked rears dragged across the asphalt smoke and mark on their own.
+          + vehicle.handbrake * THREE.MathUtils.clamp(longitudinal / 3.5, 0, 1) * 0.7,
+        0,
+        1,
+      );
     data.longitudinal = longitudinal;
   }
 }

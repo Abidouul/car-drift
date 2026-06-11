@@ -58,6 +58,7 @@
           <div><kbd data-hint-key="left">Q</kbd><span>Steer left</span></div>
           <div><kbd data-hint-key="right">D</kbd><span>Steer right</span></div>
           <div><kbd data-hint-key="down">S</kbd><span>Brake / reverse</span></div>
+          <div class="controls-hint-wide"><kbd data-hint-key="handbrake">Space</kbd><span>Handbrake &mdash; flick in, tap to slide</span></div>
         </div>
         <p class="controls-hint-tip">Build speed, flick into a corner, hold the slide to score.</p>
       </div>
@@ -201,6 +202,10 @@
               <div class="keybind-row">
                 <span>Reverse</span>
                 <button class="keybind-button" type="button" data-bind-action="down">S</button>
+              </div>
+              <div class="keybind-row">
+                <span>Handbrake</span>
+                <button class="keybind-button" type="button" data-bind-action="handbrake">Space</button>
               </div>
             </div>
             <p id="keybind-status" class="keybind-status" aria-live="polite"></p>
