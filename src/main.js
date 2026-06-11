@@ -75,14 +75,21 @@ const defaultKeyBindings = {
 const carConfigs = [
   {
     id: 'porsche',
-    name: 'Porsche Drift Build',
+    name: 'Stuttgart RS',
+    tagline: 'Fastback firecracker. Big power, big angles.',
     bay: 'Preview bay 01',
     stats: {
-      Power: '610 HP',
-      Handling: '86',
-      'Drift Angle': '92',
-      Grip: '74',
-      Weight: '1280 kg',
+      power: 610,
+      handling: 86,
+      driftAngle: 92,
+      grip: 74,
+      weightKg: 1280,
+    },
+    handling: {
+      driveForceScale: 1.06,
+      rearGripScale: 0.96,
+      steerScale: 0.97,
+      yawDampingScale: 0.96,
     },
     visual: {
       body: 'porsche',
@@ -108,14 +115,22 @@ const carConfigs = [
   },
   {
     id: 'e30',
-    name: 'BMW E30 Drift Build',
+    name: 'Bavaria E3',
+    tagline: 'Boxy, light, and always ready to rotate.',
     bay: 'Preview bay 02',
     stats: {
-      Power: '420 HP',
-      Handling: '90',
-      'Drift Angle': '88',
-      Grip: '69',
-      Weight: '1120 kg',
+      power: 420,
+      handling: 90,
+      driftAngle: 88,
+      grip: 69,
+      weightKg: 1120,
+    },
+    handling: {
+      driveForceScale: 0.94,
+      rearGripScale: 1.02,
+      steerScale: 1.06,
+      yawDampingScale: 1.05,
+      maxSpeedScale: 0.96,
     },
     visual: {
       body: 'e30',
@@ -139,6 +154,15 @@ const carConfigs = [
       frontSplitter: 2.34,
     },
   },
+];
+
+const statMeterRanges = [
+  { key: 'power', label: 'Power', min: 300, max: 700, format: (value) => `${value} HP` },
+  { key: 'handling', label: 'Handling', min: 60, max: 100, format: (value) => `${value}` },
+  { key: 'driftAngle', label: 'Drift Angle', min: 60, max: 100, format: (value) => `${value}` },
+  { key: 'grip', label: 'Grip', min: 50, max: 100, format: (value) => `${value}` },
+  // Lighter is better, so the weight meter fills toward the light end.
+  { key: 'weightKg', label: 'Weight', min: 1400, max: 900, format: (value) => `${value} kg` },
 ];
 
 const smallMachine = (navigator.deviceMemory && navigator.deviceMemory <= 4)
@@ -584,6 +608,7 @@ function initializeGame() {
   setupEventListeners();
   muteToggle.checked = state.muted;
   renderKeyBindings();
+  renderCarCards();
   renderCarSelection();
   showMainMenu();
   animate();
@@ -2215,7 +2240,7 @@ function createCar(config = carConfigs[0]) {
 function addCarDecals(parent, visual, isE30) {
   const primaryDecal = makeDecalMaterial(visual.decal, visual.accent);
   const secondaryDecal = makeDecalMaterial(visual.decalAlt, visual.accentWarm);
-  const numberDecal = makeDecalMaterial(isE30 ? '30' : '911', 0xf4f6f0, 'rgba(0, 0, 0, 0.55)');
+  const numberDecal = makeDecalMaterial(isE30 ? '30' : '71', 0xf4f6f0, 'rgba(0, 0, 0, 0.55)');
 
   for (const side of [-1, 1]) {
     const door = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.24), primaryDecal);
@@ -3176,11 +3201,19 @@ function getActiveHandling(level = getActiveLevelConfig()) {
     )
     : 0;
 
+  // Per-car character on top of the level baseline: gentle multipliers
+  // (within ±8%) derived from the selected car's stat sheet.
+  const merged = { ...level.handling };
+  const carHandling = getSelectedCarConfig().handling ?? {};
+  for (const [key, scale] of Object.entries(carHandling)) {
+    if (typeof merged[key] === 'number') merged[key] *= scale;
+  }
+
   return {
-    ...level.handling,
-    driveForceScale: level.handling.driveForceScale * THREE.MathUtils.lerp(1, manualTuning.launchDriveForceScale, launchAssist),
-    steerScale: level.handling.steerScale * THREE.MathUtils.lerp(1, manualTuning.launchSteerScale, launchAssist),
-    yawDampingScale: level.handling.yawDampingScale * THREE.MathUtils.lerp(1, manualTuning.launchYawDampingScale, launchAssist),
+    ...merged,
+    driveForceScale: merged.driveForceScale * THREE.MathUtils.lerp(1, manualTuning.launchDriveForceScale, launchAssist),
+    steerScale: merged.steerScale * THREE.MathUtils.lerp(1, manualTuning.launchSteerScale, launchAssist),
+    yawDampingScale: merged.yawDampingScale * THREE.MathUtils.lerp(1, manualTuning.launchYawDampingScale, launchAssist),
   };
 }
 
@@ -3386,6 +3419,56 @@ function selectCar(carId) {
   state.selectedCar = carId;
   rebuildGameplayCar();
   renderCarSelection();
+}
+
+function renderCarCards() {
+  for (const card of carCards) {
+    const config = getCarConfig(card.dataset.carCard);
+    if (!config) continue;
+
+    const accent = `#${config.visual.accent.toString(16).padStart(6, '0')}`;
+    card.style.setProperty('--car-accent', accent);
+
+    const title = card.querySelector('h3');
+    if (title) title.textContent = config.name;
+    const tagline = card.querySelector('.car-tagline');
+    if (tagline) tagline.textContent = config.tagline ?? '';
+    const bay = card.querySelector('.car-preview-panel span');
+    if (bay) bay.textContent = config.bay;
+
+    const statsHost = card.querySelector('[data-car-stats]');
+    if (!statsHost) continue;
+    statsHost.textContent = '';
+    for (const { key, label, min, max, format } of statMeterRanges) {
+      const value = config.stats[key];
+      if (value === undefined) continue;
+      const fill = THREE.MathUtils.clamp((value - min) / (max - min), 0.04, 1);
+
+      const row = document.createElement('div');
+      row.className = 'stat-row';
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'stat-label';
+      labelEl.textContent = label;
+      row.append(labelEl);
+
+      const valueEl = document.createElement('span');
+      valueEl.className = 'stat-value';
+      valueEl.textContent = format(value);
+      row.append(valueEl);
+
+      const meter = document.createElement('span');
+      meter.className = 'stat-meter';
+      meter.setAttribute('role', 'img');
+      meter.setAttribute('aria-label', `${label}: ${format(value)}`);
+      const meterFill = document.createElement('i');
+      meterFill.style.width = `${Math.round(fill * 100)}%`;
+      meter.append(meterFill);
+      row.append(meter);
+
+      statsHost.append(row);
+    }
+  }
 }
 
 function renderCarSelection() {
