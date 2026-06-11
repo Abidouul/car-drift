@@ -6,7 +6,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 // canvas. Runs only while the cars panel is visible; the preview renderer
 // keeps its own pixel ratio so the gameplay resolution-scale setting never
 // degrades the cards.
-export function createCarPreviewSystem({ carConfigs, createCar, lowPower = false }) {
+export function createCarPreviewSystem({ carConfigs, createCar, disposeObjectTree, lowPower = false }) {
   const canvases = [...document.querySelectorAll('canvas[data-preview-car]')];
   if (!canvases.length) return null;
 
@@ -15,6 +15,33 @@ export function createCarPreviewSystem({ carConfigs, createCar, lowPower = false
   let failed = false;
   let frameToggle = 0;
   let selectedId = null;
+
+  function buildPreviewCar(config) {
+    const car = createCar(config);
+    car.root.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = false;
+        child.receiveShadow = false;
+      }
+      // The factory's point lights are tuned for the night track; in the
+      // small studio scene they blow out the paint.
+      if (child.isPointLight) child.intensity *= 0.3;
+    });
+    car.root.position.y = 0.06;
+    return car;
+  }
+
+  function frameCamera(camera, carRoot) {
+    const bounds = new THREE.Box3().setFromObject(carRoot);
+    const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+    const distance = (sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * 0.92;
+    camera.position.set(
+      Math.sin(0.72) * distance * Math.cos(0.3),
+      sphere.center.y + Math.sin(0.3) * distance,
+      Math.cos(0.72) * distance * Math.cos(0.3),
+    );
+    camera.lookAt(sphere.center.x, sphere.center.y - 0.04, sphere.center.z);
+  }
 
   const entries = canvases.map((canvas) => {
     const config = carConfigs.find((item) => item.id === canvas.dataset.previewCar);
@@ -29,17 +56,7 @@ export function createCarPreviewSystem({ carConfigs, createCar, lowPower = false
     turntable.rotation.y = config.id === 'e30' ? 2.35 : 2.95;
     stage.add(turntable);
 
-    const car = createCar(config);
-    car.root.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = false;
-        child.receiveShadow = false;
-      }
-      // The factory's point lights are tuned for the night track; in the
-      // small studio scene they blow out the paint.
-      if (child.isPointLight) child.intensity *= 0.3;
-    });
-    car.root.position.y = 0.06;
+    const car = buildPreviewCar(config);
     turntable.add(car.root);
 
     const accent = new THREE.Color(config.visual.accent);
@@ -75,26 +92,20 @@ export function createCarPreviewSystem({ carConfigs, createCar, lowPower = false
     rim.position.set(-3.2, 2.4, -4.2);
     scene.add(rim);
 
-    const bounds = new THREE.Box3().setFromObject(car.root);
-    const sphere = bounds.getBoundingSphere(new THREE.Sphere());
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
-    const distance = (sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * 0.92;
-    camera.position.set(
-      Math.sin(0.72) * distance * Math.cos(0.3),
-      sphere.center.y + Math.sin(0.3) * distance,
-      Math.cos(0.72) * distance * Math.cos(0.3),
-    );
-    camera.lookAt(sphere.center.x, sphere.center.y - 0.04, sphere.center.z);
+    frameCamera(camera, car.root);
 
     canvas.classList.add('is-live');
 
     return {
       id: config.id,
+      config,
       canvas,
       ctx: canvas.getContext('2d'),
       scene,
       camera,
       turntable,
+      carRoot: car.root,
       ring,
       width: 0,
       height: 0,
@@ -168,6 +179,22 @@ export function createCarPreviewSystem({ carConfigs, createCar, lowPower = false
       selectedId = carId;
       for (const entry of entries) {
         entry.ring.material.opacity = entry.id === carId ? 0.6 : 0.18;
+      }
+    },
+    // Rebuild one card's car in place and reframe its camera (used when the
+    // car's GLB model finishes loading after the previews were built).
+    refresh(carId) {
+      const entry = entries.find((item) => item.id === carId);
+      if (!entry) return;
+      entry.turntable.remove(entry.carRoot);
+      disposeObjectTree?.(entry.carRoot);
+      const car = buildPreviewCar(entry.config);
+      entry.carRoot = car.root;
+      entry.turntable.add(car.root);
+      frameCamera(entry.camera, car.root);
+      if (entry.width && entry.height) {
+        entry.camera.aspect = entry.width / entry.height;
+        entry.camera.updateProjectionMatrix();
       }
     },
     syncSize,

@@ -48,3 +48,12 @@ Just trying to make something that I like.
 The production build intentionally splits Three.js into a separate vendor chunk. The
 Three chunk is a little above 500 kB minified, so Vite's chunk warning limit is set
 to 550 kB while the game code remains in a much smaller app chunk.
+
+## Asset credits
+
+- "2010 Vertex Edge Nissan S15 Silvia" 3D model by
+  [Ddiaz Design](https://sketchfab.com/ddiaz-design), licensed under
+  [CC-BY-NC-SA-4.0](http://creativecommons.org/licenses/by-nc-sa/4.0/).
+  Source: <https://sketchfab.com/3d-models/2010-vertex-edge-nissan-s15-silvia-1edf4f37e6284bdaa6df0f9572389875>.
+  Used in-game as the "Silvia S15 Vertex". Per the license this project must
+  remain non-commercial.

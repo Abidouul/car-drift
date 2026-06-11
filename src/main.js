@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { createCarPreviewSystem } from './carPreview.js';
 import { buildRouteSVG } from './routePreview.js';
+import { loadCarModels, cloneCarModel } from './carModels.js';
 
 const canvas = document.querySelector('#scene');
 const hud = document.querySelector('.hud');
@@ -166,6 +167,50 @@ const carConfigs = [
       frontSplitter: 2.34,
     },
   },
+  {
+    id: 's15',
+    name: 'Silvia S15 Vertex',
+    tagline: 'The drift icon, wide-body kit and all.',
+    bay: 'Preview bay 03',
+    stats: {
+      power: 480,
+      handling: 88,
+      driftAngle: 95,
+      grip: 71,
+      weightKg: 1240,
+    },
+    handling: {
+      driveForceScale: 1.0,
+      rearGripScale: 0.94,
+      steerScale: 1.02,
+      yawDampingScale: 0.94,
+    },
+    visual: {
+      // Real scanned-style GLB body (public/models/s15.glb); the procedural
+      // fields below only shape the placeholder while the model streams in.
+      model: 's15',
+      body: 'porsche',
+      paint: 0xb9bec4,
+      darkPaint: 0x23282d,
+      accent: 0xff8a3c,
+      accentWarm: 0x5ce8ff,
+      glass: 0x9edfff,
+      rim: 0x15181b,
+      brake: 0xff8a3c,
+      underglow: 0xff8a3c,
+      decal: 'NIGHT RUN',
+      decalAlt: 'SIDEWAYS CO.',
+      lightStyle: 'round',
+      cabin: [1.36, 0.52, 1.16],
+      cabinPosition: [0, 1.12, 0.26],
+      scale: [1, 1, 1],
+      wheelOffset: 0.84,
+      wheelScale: 0.78,
+      rearWingHeight: 0.92,
+      rearWingWidth: 2.2,
+      frontSplitter: 2.4,
+    },
+  },
 ];
 
 const statMeterRanges = [
@@ -326,6 +371,7 @@ const state = {
   screen: 'menu',
   level: 0,
   selectedCar: 'porsche',
+  pendingModelRefresh: false,
   levelBackPanel: 'main',
   shadows: getShadowQualitySettings().enabled,
   levelFogDensity: 0.022,
@@ -545,7 +591,7 @@ const levelConfigs = [
     name: 'Industrial Dock Route',
     description: 'Wide dock straights feeding a tight container chicane.',
     difficulty: 2,
-    recommendedCar: 'porsche',
+    recommendedCar: 's15',
     road: {
       points: [
         [-32, -18], [-16, -24], [8, -22], [26, -12],
@@ -644,7 +690,7 @@ function initializeGame() {
   world.add(car.root);
   menuPreviewSystem = createMenuPreviewSystem();
   world.add(menuPreviewSystem.root);
-  carPreviewSystem = createCarPreviewSystem({ carConfigs, createCar, lowPower: smallMachine });
+  carPreviewSystem = createCarPreviewSystem({ carConfigs, createCar, disposeObjectTree, lowPower: smallMachine });
   smokeSystem = createSmokeSystem();
   skidSystem = createSkidSystem();
   state.vehicle.contacts = createWheelContactData();
@@ -661,6 +707,26 @@ function initializeGame() {
   renderCarSelection();
   showMainMenu();
   animate();
+
+  // Real car models stream in behind the running game; each finished model
+  // swaps into the gameplay car, garage showcase, and selection-card preview.
+  loadCarModels(refreshCarVisualsForModel);
+}
+
+function refreshCarVisualsForModel(modelId) {
+  const config = carConfigs.find((entry) => entry.visual.model === modelId);
+  if (!config) return;
+  if (state.selectedCar === config.id && car?.root) {
+    if (state.screen === 'playing' && !state.paused) {
+      // Uploading the model's textures mid-run would hitch the drift;
+      // swap at the next pause/menu boundary instead.
+      state.pendingModelRefresh = true;
+    } else {
+      rebuildGameplayCar();
+    }
+  }
+  menuPreviewSystem?.refreshSlot(config.id);
+  carPreviewSystem?.refresh(config.id);
 }
 
 function createRenderer() {
@@ -1194,10 +1260,30 @@ function createMenuPreviewSystem() {
   addGarageProps(root, carbonMaterial, blueNeon, amberNeon);
 
   const previewSlots = new Map();
-  const slotData = [
-    { config: carConfigs[0], position: [-1.28, 0, -3.48], rotation: -0.34 },
-    { config: carConfigs[1], position: [1.28, 0, -3.48], rotation: 0.34 },
+  // Side slots stay within the menu camera's horizontal frustum on 4:3 and
+  // wider; they stagger forward so the three platforms read as a row.
+  const slotPlacements = [
+    { position: [-2.7, 0, -2.6], rotation: -0.45 },
+    { position: [0, 0, -3.9], rotation: 0 },
+    { position: [2.7, 0, -2.6], rotation: 0.45 },
   ];
+  const slotData = carConfigs.map((config, index) => ({
+    config,
+    ...slotPlacements[index % slotPlacements.length],
+  }));
+
+  const buildShowcase = (slot) => {
+    const showcase = createCar(slot.config);
+    showcase.root.position.y = 0.07;
+    showcase.root.scale.multiplyScalar(0.72);
+    showcase.root.traverse((child) => {
+      if (child.isPointLight) {
+        child.userData.optionalLight = true;
+        child.intensity *= 0.5;
+      }
+    });
+    return showcase;
+  };
 
   for (const slot of slotData) {
     const group = new THREE.Group();
@@ -1211,7 +1297,7 @@ function createMenuPreviewSystem() {
       emissive: slot.config.visual.accent,
       emissiveIntensity: 0.08,
     });
-    const platform = new THREE.Mesh(new RoundedBoxGeometry(4.9, 0.08, 3, 4, 0.08), platformMaterial);
+    const platform = new THREE.Mesh(new RoundedBoxGeometry(4.2, 0.08, 2.9, 4, 0.08), platformMaterial);
     platform.position.y = 0.02;
     platform.receiveShadow = true;
     group.add(platform);
@@ -1230,19 +1316,11 @@ function createMenuPreviewSystem() {
     group.add(glow);
 
     // The platforms used to sit empty; park each car on its showcase spot.
-    const showcase = createCar(slot.config);
-    showcase.root.position.y = 0.07;
-    showcase.root.scale.multiplyScalar(0.78);
-    showcase.root.traverse((child) => {
-      if (child.isPointLight) {
-        child.userData.optionalLight = true;
-        child.intensity *= 0.5;
-      }
-    });
+    const showcase = buildShowcase(slot);
     group.add(showcase.root);
 
     root.add(group);
-    previewSlots.set(slot.config.id, { group, glow, platform });
+    previewSlots.set(slot.config.id, { group, glow, platform, showcase, slot });
   }
 
   const garageLight = new THREE.PointLight(0x5ce8ff, 36, 12, 2.4);
@@ -1276,6 +1354,16 @@ function createMenuPreviewSystem() {
     setVisible(visible) {
       root.visible = visible;
     },
+    // Rebuild one showcase car in place (used when its GLB model finishes
+    // loading after the garage was constructed).
+    refreshSlot(carId) {
+      const record = previewSlots.get(carId);
+      if (!record) return;
+      record.group.remove(record.showcase.root);
+      disposeObjectTree(record.showcase.root);
+      record.showcase = buildShowcase(record.slot);
+      record.group.add(record.showcase.root);
+    },
     setSelected(carId) {
       for (const [id, slot] of previewSlots) {
         const selected = id === carId;
@@ -1291,7 +1379,7 @@ function createMenuPreviewSystem() {
         const selected = id === state.selectedCar;
         const targetY = selected ? 0.07 : 0;
         slot.group.position.y = THREE.MathUtils.lerp(slot.group.position.y, targetY, 1 - Math.pow(0.03, delta));
-        slot.group.rotation.y += Math.sin(time * 0.7 + (id === 'e30' ? 1.2 : 0)) * delta * 0.035;
+        slot.group.rotation.y += Math.sin(time * 0.7 + (id === 'e30' ? 1.2 : id === 's15' ? 2.3 : 0)) * delta * 0.035;
       }
 
       const hazeVisible = getGraphicsProfile().smoke;
@@ -2579,6 +2667,12 @@ function createCar(config = carConfigs[0]) {
   root.add(sprung);
   root.userData.carId = config.id;
 
+  // Real GLB body when its model has finished streaming in; until then (or
+  // on load failure) the procedural body below stands in. Wheels, lights,
+  // and the {root, sprung, wheels} contract are identical either way.
+  const modelBody = visual.model ? cloneCarModel(visual.model) : null;
+  if (modelBody) sprung.add(modelBody);
+
   const paint = new THREE.MeshPhysicalMaterial({
     color: visual.paint,
     roughness: 0.24,
@@ -2660,6 +2754,8 @@ function createCar(config = carConfigs[0]) {
     blur: new THREE.CircleGeometry(0.33, 28),
   };
 
+  if (!modelBody) {
+  // (procedural body block keeps its original indentation)
   addMesh(sprung, makeCarHullGeometry(visual.body), paint);
   addMesh(sprung, new RoundedBoxGeometry(isE30 ? 2.62 : 2.76, 0.18, isE30 ? 4.2 : 4.44, 5, isE30 ? 0.035 : 0.08), carbon, [0, 0.43, 0.08]);
   addMesh(sprung, new RoundedBoxGeometry(0.07, 0.08, 4.08, 3, 0.025), carbon, [-1.42, 0.5, 0.05]);
@@ -2769,16 +2865,26 @@ function createCar(config = carConfigs[0]) {
   addMesh(sprung, new RoundedBoxGeometry(1.04, 0.03, 0.045, 2, 0.015), black, [0, isE30 ? 0.9 : 0.86, -1.54]);
   addMesh(sprung, new RoundedBoxGeometry(1.02, 0.03, 0.045, 2, 0.015), black, [0, isE30 ? 0.93 : 0.82, 1.83]);
 
+  }
+
+  // Narrower real cars pull their wheels in and shrink them to fit the
+  // model's arches - but only while the model body is actually present.
+  // The procedural fallback hull is game-width; model-tuned offsets would
+  // bury the wheels inside it.
+  const wheelScale = modelBody ? (visual.wheelScale ?? 1) : 1;
+  const wheelOffset = modelBody ? visual.wheelOffset : (isE30 ? 1.35 : 1.4);
+  const wheelY = 0.39 * wheelScale;
   const wheelPositions = [
-    [-visual.wheelOffset, 0.39, sim.frontAxleZ, true],
-    [visual.wheelOffset, 0.39, sim.frontAxleZ, true],
-    [-visual.wheelOffset, 0.39, sim.rearAxleZ, false],
-    [visual.wheelOffset, 0.39, sim.rearAxleZ, false],
+    [-wheelOffset, wheelY, sim.frontAxleZ, true],
+    [wheelOffset, wheelY, sim.frontAxleZ, true],
+    [-wheelOffset, wheelY, sim.rearAxleZ, false],
+    [wheelOffset, wheelY, sim.rearAxleZ, false],
   ];
 
   for (const [x, y, z, front] of wheelPositions) {
     const steering = new THREE.Group();
     steering.position.set(x, y, z);
+    steering.scale.setScalar(wheelScale);
 
     const spin = new THREE.Group();
     steering.add(spin);
@@ -2794,12 +2900,14 @@ function createCar(config = carConfigs[0]) {
       blur,
       front,
       side: Math.sign(x),
-      localContact: new THREE.Vector3(Math.sign(x) * 1.35, 0.04, z),
+      localContact: new THREE.Vector3(Math.sign(x) * wheelOffset, 0.04, z),
     });
   }
 
-  addCarDecals(sprung, visual, isE30);
-  addRollCage(sprung, carbon, isE30);
+  if (!modelBody) {
+    addCarDecals(sprung, visual, isE30);
+    addRollCage(sprung, carbon, isE30);
+  }
   root.scale.set(...visual.scale);
 
   const underglow = new THREE.PointLight(visual.underglow, 2.8, 4.2, 3);
@@ -4284,6 +4392,15 @@ function isCarSelectVisible() {
 }
 
 function updateScenePresentationVisibility() {
+  // A model swap deferred during active driving lands at the first safe
+  // boundary (pause, results, any menu). Clear the flag before rebuilding -
+  // rebuildGameplayCar re-enters this function.
+  if (state.pendingModelRefresh && (state.paused || state.screen !== 'playing')) {
+    state.pendingModelRefresh = false;
+    rebuildGameplayCar();
+    return;
+  }
+
   const menuActive = ['menu', 'result', 'quit'].includes(state.screen);
   if (car?.root) car.root.visible = !menuActive;
   menuPreviewSystem?.setVisible(menuActive);
@@ -5208,6 +5325,9 @@ function disposeObjectTree(root) {
   const disposedGeometries = new WeakSet();
 
   root.traverse((child) => {
+    // GLB-template meshes share geometry/materials/textures across every
+    // clone; disposing one clone must not destroy the others' resources.
+    if (child.userData.sharedAsset) return;
     if (child.geometry && !disposedGeometries.has(child.geometry)) {
       child.geometry.dispose();
       disposedGeometries.add(child.geometry);

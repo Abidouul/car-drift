@@ -525,7 +525,7 @@ select {
 }
 
 .car-select-panel {
-  width: min(1120px, calc(100vw - 36px));
+  width: min(1460px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);
   padding: clamp(16px, 2.5vw, 26px);
   border-color: rgb(92 232 255 / 28%);
@@ -562,7 +562,7 @@ select {
 
 .car-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: clamp(12px, 2vw, 18px);
 }
 
@@ -1039,6 +1039,15 @@ h2 {
 
 .menu-copy {
   margin: 0;
+}
+
+.credit-link {
+  color: #aeb7b4;
+  text-decoration-color: rgb(255 221 103 / 55%);
+}
+
+.credit-link:hover {
+  color: #ffdd67;
 }
 
 .settings-group {

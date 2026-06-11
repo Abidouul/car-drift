@@ -138,3 +138,55 @@ occluded); all additions are instanced or static with lights tagged optional.
 
 **Next steps:** touch steering, engine audio pass, animated water normal map, third
 car, main.js modularization.
+
+### 2026-06-11 (later still) — Real GLB car model: Silvia S15 (branch `feat/real-car-model`)
+
+**Goal:** Support real car models (GLB) and add the user's Nissan Silvia S15 Vertex
+Edge model as a third selectable car.
+
+**Files changed:** new `src/carModels.js`, `src/main.js`, `src/carPreview.js`,
+`index.html`, `src/style.css`, `vite.config.js`, `README.md`, new
+`public/models/s15.glb` (12.8 MB).
+
+**What changed and why:**
+1. GLB analysis (workflow): plain glTF 2 (no Draco/KTX2 — no decoders needed), 99k
+   tris, 27 materials, wheels under one `Wheels_F_00` node with four named caliper
+   pivots at the true wheel centers; model loads at 1/100 scale, nose +Z; license
+   **CC-BY-NC-SA-4.0 by Ddiaz Design (Sketchfab)** — attribution added to README and
+   the options panel; project must stay non-commercial.
+2. `src/carModels.js` — background loader (dynamic-import GLTFLoader after the game
+   starts; never blocks startup; 404/offline falls back silently) + normalization:
+   wheelbase-based auto-scale (wheel-pivot world positions → exactly 2.8 m so arches
+   land on the game's axle positions), auto nose orientation, grounding via bbox,
+   axle-midpoint z alignment, transmission materials converted to plain transparency
+   (skips three's extra transmission render pass), `userData.sharedAsset` markers.
+3. `createCar` — when a config has `visual.model` and the template is ready, the
+   clone parents under `sprung` (suspension roll/pitch animates the real body) and
+   the entire procedural body is skipped; wheels stay procedural, now parameterized
+   by `visual.wheelOffset`/`wheelScale` (S15: ±0.84 m track, 0.78 scale) so smoke,
+   skids, steering, spin, and blur all keep working. Until the model lands (or if it
+   fails) the S15 config renders a procedural placeholder.
+4. Refresh-on-load: `refreshCarVisualsForModel` rebuilds the gameplay car (if
+   selected), the garage slot (`menuPreviewSystem.refreshSlot`), and the card preview
+   (`carPreviewSystem.refresh` with camera re-framing). `disposeObjectTree` now skips
+   shared-asset meshes so disposing one clone can't destroy the others' textures.
+5. Third car UI: S15 card in index.html, `.car-grid` → auto-fit 3-up (panel 1460px),
+   garage rebuilt to three platforms from `carConfigs`, dock route recommends the S15.
+6. `vite.config.js` — loaders split into a lazy `three-loaders` chunk so GLTFLoader's
+   44 kB never delays the menu.
+
+**Tests/builds:** dev + `GITHUB_PAGES=true` builds clean; dist contains
+`models/s15.glb`, inlined `"/car-drift/"` base, relative loader-chunk imports.
+Browser-verified: 3 cards with live previews (real S15 on its turntable), garage
+parks three cars, S15 selected → real model drives on the dock, handbrake flick →
+valid drift (gauge green, +1/s, smoke/skids from locked rears). Loader-failure path
+exercised for real (Vite first-load dep 504) — warned and kept procedural bodies.
+Adversarial review workflow run on the staged diff before merging.
+
+**Known issues:** model unoptimized (12.8 MB; meshopt/gltfpack would cut it ~3-4x);
+all 27 materials doubleSided (fillrate); car body casts whole-mesh shadows (no
+per-panel tuning); preview placeholder visibly swaps to the real model a moment
+after a cold load.
+
+**Next steps:** gltfpack compression for the GLB, more GLB cars via the manifest
+(drop a file in public/models + one manifest/config entry), touch steering, audio.
