@@ -25,6 +25,9 @@ Did like 2-4 prompts with Conductor and here are all the implementations that I 
 - Modified Maps and made them more playable while copying games like CarX Drift Racing.
 - Added Sense of speed because game felt Sluggish and slow.
 - Added Object collisions.
+- Imported 3D rendered car on project using Fable 5 on Supercode.
+- Made the maps bigger so drifting is easier.
+- Added some building on certain maps to get a plausible and clean environment.
 - ...
 
 Implementations that I wish to do in the future:
@@ -38,6 +41,8 @@ Implementations that I wish to do in the future:
 - Make a Car Selection Menu.
 - Change Car Physics and make it more realistically heavy.
 - Add More Environments with Multiple Maps.
+- Wheels looking really bad so I need to fix those and import directly from the 3D rendered cars theyr wheels.
+- Replace other cars with real 3D rendered Cars imported from Sketchfab.
 - ...
 
 Work can get taken and be customizable for now :)
@@ -55,5 +60,4 @@ to 550 kB while the game code remains in a much smaller app chunk.
   [Ddiaz Design](https://sketchfab.com/ddiaz-design), licensed under
   [CC-BY-NC-SA-4.0](http://creativecommons.org/licenses/by-nc-sa/4.0/).
   Source: <https://sketchfab.com/3d-models/2010-vertex-edge-nissan-s15-silvia-1edf4f37e6284bdaa6df0f9572389875>.
-  Used in-game as the "Silvia S15 Vertex". Per the license this project must
-  remain non-commercial.
+  Used in-game as the "Silvia S15 Vertex".
