@@ -918,15 +918,82 @@ h2 {
 
 .level-card {
   display: grid;
-  gap: 4px;
+  grid-template-columns: 118px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
   min-height: 74px;
-  padding: 12px 14px;
+  padding: 10px 14px 10px 10px;
   text-align: left;
 }
 
-.level-card span {
+.level-route {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 50% 40%, rgb(255 255 255 / 7%), transparent 70%),
+    rgb(5 6 7 / 72%);
+}
+
+.level-route svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.level-card-info {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.level-name {
   font-size: 1rem;
   font-weight: 950;
+}
+
+.level-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.level-difficulty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #c6cfca;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.level-pips {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.level-pips i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 14%);
+}
+
+.level-pips i.is-filled {
+  background: #ffdd67;
+  box-shadow: 0 0 6px rgb(255 221 103 / 55%);
+}
+
+.level-recommended {
+  color: #8ea39d;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .level-card small,

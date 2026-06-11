@@ -2,6 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { createCarPreviewSystem } from './carPreview.js';
+import { buildRouteSVG } from './routePreview.js';
 
 const canvas = document.querySelector('#scene');
 const hud = document.querySelector('.hud');
@@ -412,6 +413,9 @@ const carCollisionSamples = [
 const levelConfigs = [
   {
     name: 'Urban Night Loop',
+    description: 'Neon sweepers, an underpass exit, and a forgiving parking pad.',
+    difficulty: 1,
+    recommendedCar: 'porsche',
     road: {
       points: [
         [-30, -8], [-20, -22], [-2, -24], [14, -18],
@@ -467,6 +471,9 @@ const levelConfigs = [
   },
   {
     name: 'Mountain Touge',
+    description: 'Low-grip hairpins and switchbacks. Commit to every flick.',
+    difficulty: 3,
+    recommendedCar: 'e30',
     road: {
       points: [
         [-26, 20], [-14, 24], [-4, 18], [-10, 8],
@@ -523,6 +530,9 @@ const levelConfigs = [
   },
   {
     name: 'Industrial Dock Route',
+    description: 'Wide dock straights feeding a tight container chicane.',
+    difficulty: 2,
+    recommendedCar: 'porsche',
     road: {
       points: [
         [-32, -18], [-16, -24], [8, -22], [26, -12],
@@ -618,6 +628,8 @@ function initializeGame() {
   renderGraphicsSettings();
   applyGraphicsSettings();
 
+  // Level cards must exist before setupEventListeners binds [data-level].
+  renderLevelCards();
   setupEventListeners();
   muteToggle.checked = state.muted;
   renderKeyBindings();
@@ -3501,6 +3513,64 @@ function selectCar(carId) {
   state.selectedCar = carId;
   rebuildGameplayCar();
   renderCarSelection();
+}
+
+function renderLevelCards() {
+  const host = document.querySelector('.level-list');
+  if (!host) return;
+  host.textContent = '';
+
+  levelConfigs.forEach((level, index) => {
+    const card = document.createElement('button');
+    card.className = 'level-card';
+    card.type = 'button';
+    card.dataset.level = String(index);
+
+    const route = document.createElement('span');
+    route.className = 'level-route';
+    route.innerHTML = buildRouteSVG(level);
+    card.append(route);
+
+    const info = document.createElement('span');
+    info.className = 'level-card-info';
+
+    const title = document.createElement('span');
+    title.className = 'level-name';
+    title.textContent = level.name;
+    info.append(title);
+
+    const description = document.createElement('small');
+    description.textContent = level.description ?? '';
+    info.append(description);
+
+    const meta = document.createElement('span');
+    meta.className = 'level-meta';
+
+    const difficulty = document.createElement('span');
+    difficulty.className = 'level-difficulty';
+    const pips = document.createElement('span');
+    pips.className = 'level-pips';
+    for (let pip = 1; pip <= 3; pip += 1) {
+      const dot = document.createElement('i');
+      dot.classList.toggle('is-filled', pip <= (level.difficulty ?? 1));
+      pips.append(dot);
+    }
+    difficulty.append(pips);
+    difficulty.append(['Casual', 'Spicy', 'Expert'][(level.difficulty ?? 1) - 1]);
+    meta.append(difficulty);
+
+    const recommended = getCarConfig(level.recommendedCar);
+    if (recommended) {
+      const fit = document.createElement('span');
+      fit.className = 'level-recommended';
+      fit.textContent = `Best fit: ${recommended.name}`;
+      meta.append(fit);
+    }
+
+    info.append(meta);
+    card.append(info);
+    host.append(card);
+  });
 }
 
 function renderCarCards() {
